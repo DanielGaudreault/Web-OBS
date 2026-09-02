@@ -1,1 +1,699 @@
+// ============================================
+// WEB OBS STUDIO - COMPLETE SCRIPT
+// ============================================
 
+// ===== STATE =====
+const state = {
+    isStreaming: false,
+    isRecording: false,
+    currentSource: 'camera',
+    mediaStream: null,
+    recorder: null,
+    recordedChunks: [],
+    startTime: null,
+    recordTimer: null,
+    overlays: [],
+    overlayIdCounter: 0,
+    canvas: null,
+    canvasStream: null,
+    animationFrame: null
+};
+
+// ===== DOM ELEMENTS =====
+const previewVideo = document.getElementById('previewVideo');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusIndicator = document.getElementById('statusIndicator');
+const recordBtn = document.getElementById('recordBtn');
+const screenshotBtn = document.getElementById('screenshotBtn');
+const recordTime = document.getElementById('recordTime');
+const fpsCounter = document.getElementById('fpsCounter');
+const resolutionDisplay = document.getElementById('resolutionDisplay');
+const overlayContainer = document.getElementById('overlayContainer');
+const sourceButtons = document.querySelectorAll('.source-btn');
+const overlayButtons = document.querySelectorAll('.overlay-btn');
+const presetButtons = document.querySelectorAll('.preset-btn');
+
+// ============================================
+// VIDEO CAPTURE
+// ============================================
+
+async function startStream() {
+    try {
+        let stream;
+        let constraints = { video: true, audio: true };
+
+        switch (state.currentSource) {
+            case 'camera':
+                constraints = {
+                    video: { facingMode: 'user', width: 1280, height: 720 },
+                    audio: true
+                };
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                break;
+            case 'screen':
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { width: 1920, height: 1080 },
+                    audio: true
+                });
+                break;
+            case 'window':
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { width: 1280, height: 720 },
+                    audio: true
+                });
+                break;
+        }
+
+        state.mediaStream = stream;
+        previewVideo.srcObject = stream;
+        await previewVideo.play();
+
+        state.isStreaming = true;
+        updateUI();
+        showToast('Stream started successfully!', 'success');
+        
+        // Start FPS counter
+        startFPSMonitor();
+
+        // Start overlay rendering
+        startOverlayRendering();
+
+        return stream;
+    } catch (error) {
+        console.error('Error starting stream:', error);
+        showToast('Error: ' + error.message, 'error');
+        throw error;
+    }
+}
+
+function stopStream() {
+    if (state.mediaStream) {
+        state.mediaStream.getTracks().forEach(track => track.stop());
+        state.mediaStream = null;
+        previewVideo.srcObject = null;
+        state.isStreaming = false;
+        
+        // Stop overlay rendering
+        if (state.animationFrame) {
+            cancelAnimationFrame(state.animationFrame);
+            state.animationFrame = null;
+        }
+
+        updateUI();
+        showToast('Stream stopped', 'success');
+    }
+}
+
+// ============================================
+// OVERLAY SYSTEM
+// ============================================
+
+function startOverlayRendering() {
+    // Create a canvas for overlays
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    state.canvas = canvas;
+
+    // Get the video element and draw overlays on canvas
+    function renderFrame() {
+        if (!state.isStreaming || !previewVideo.videoWidth) {
+            state.animationFrame = requestAnimationFrame(renderFrame);
+            return;
+        }
+
+        const ctx = canvas.getContext('2d');
+        
+        // Draw video frame
+        ctx.drawImage(previewVideo, 0, 0, canvas.width, canvas.height);
+        
+        // Draw overlays
+        state.overlays.forEach(overlay => {
+            if (overlay.type === 'text') {
+                ctx.fillStyle = overlay.color || '#ffffff';
+                ctx.font = `${overlay.size || 48}px Arial`;
+                ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                ctx.shadowBlur = 10;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(overlay.text || 'Hello World', overlay.x || canvas.width/2, overlay.y || canvas.height/2);
+                ctx.shadowBlur = 0;
+            } else if (overlay.type === 'frame') {
+                ctx.strokeStyle = overlay.color || '#e94560';
+                ctx.lineWidth = overlay.width || 4;
+                ctx.strokeRect(overlay.x || 50, overlay.y || 50, overlay.w || 200, overlay.h || 150);
+            } else if (overlay.type === 'image' && overlay.image) {
+                ctx.drawImage(overlay.image, overlay.x || 50, overlay.y || 50, overlay.w || 200, overlay.h || 150);
+            }
+        });
+
+        state.animationFrame = requestAnimationFrame(renderFrame);
+    }
+
+    renderFrame();
+}
+
+function addOverlay(type) {
+    const overlay = {
+        id: state.overlayIdCounter++,
+        type: type,
+        x: 100 + Math.random() * 300,
+        y: 100 + Math.random() * 200,
+        color: '#ffffff',
+        text: 'Text Overlay',
+        size: 48,
+        w: 200,
+        h: 150
+    };
+
+    if (type === 'text') {
+        const text = prompt('Enter text for overlay:', 'Hello World!');
+        if (text) {
+            overlay.text = text;
+            const color = prompt('Enter color (hex):', '#ffffff');
+            if (color) overlay.color = color;
+            const size = prompt('Enter font size:', '48');
+            if (size) overlay.size = parseInt(size);
+        } else {
+            return;
+        }
+    } else if (type === 'image') {
+        // Create file input for image upload
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        overlay.image = img;
+                        overlay.w = Math.min(300, img.width);
+                        overlay.h = Math.min(300, img.height);
+                        state.overlays.push(overlay);
+                        updateOverlayUI();
+                        showToast('Image overlay added!', 'success');
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+        input.click();
+        return;
+    } else if (type === 'frame') {
+        overlay.color = '#e94560';
+        overlay.w = 300;
+        overlay.h = 200;
+    }
+
+    state.overlays.push(overlay);
+    updateOverlayUI();
+    showToast(`${type.charAt(0).toUpperCase() + type.slice(1)} overlay added!`, 'success');
+}
+
+function clearOverlays() {
+    state.overlays = [];
+    state.overlayIdCounter = 0;
+    updateOverlayUI();
+    showToast('All overlays cleared!', 'success');
+}
+
+function updateOverlayUI() {
+    overlayContainer.innerHTML = '';
+    state.overlays.forEach(overlay => {
+        const el = document.createElement('div');
+        if (overlay.type === 'text') {
+            el.className = 'text-overlay';
+            el.textContent = overlay.text || 'Text';
+            el.style.left = overlay.x + 'px';
+            el.style.top = overlay.y + 'px';
+            el.style.color = overlay.color || '#ffffff';
+            el.style.fontSize = (overlay.size || 48) + 'px';
+            
+            // Make draggable
+            makeDraggable(el, overlay);
+        } else if (overlay.type === 'frame') {
+            el.className = 'frame-overlay';
+            el.style.left = overlay.x + 'px';
+            el.style.top = overlay.y + 'px';
+            el.style.width = overlay.w + 'px';
+            el.style.height = overlay.h + 'px';
+            el.style.borderColor = overlay.color || '#e94560';
+        } else if (overlay.type === 'image' && overlay.image) {
+            el.className = 'image-overlay';
+            const img = new Image();
+            img.src = overlay.image.src;
+            img.style.width = overlay.w + 'px';
+            img.style.height = overlay.h + 'px';
+            el.appendChild(img);
+            el.style.left = overlay.x + 'px';
+            el.style.top = overlay.y + 'px';
+            makeDraggable(el, overlay);
+        }
+        overlayContainer.appendChild(el);
+    });
+}
+
+function makeDraggable(el, overlay) {
+    let isDragging = false;
+    let startX, startY;
+
+    el.addEventListener('mousedown', function(e) {
+        isDragging = true;
+        startX = e.clientX - overlay.x;
+        startY = e.clientY - overlay.y;
+        el.style.cursor = 'grabbing';
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+        overlay.x = e.clientX - startX;
+        overlay.y = e.clientY - startY;
+        el.style.left = overlay.x + 'px';
+        el.style.top = overlay.y + 'px';
+    });
+
+    document.addEventListener('mouseup', function() {
+        if (isDragging) {
+            isDragging = false;
+            el.style.cursor = 'grab';
+        }
+    });
+}
+
+// ============================================
+// PRESETS
+// ============================================
+
+function applyPreset(preset) {
+    clearOverlays();
+    
+    switch(preset) {
+        case 'default':
+            // No overlays
+            break;
+        case 'fullscreen':
+            addOverlay('frame');
+            const frameOverlay = state.overlays[0];
+            if (frameOverlay) {
+                frameOverlay.x = 20;
+                frameOverlay.y = 20;
+                frameOverlay.w = 1240;
+                frameOverlay.h = 680;
+                frameOverlay.color = '#e94560';
+            }
+            break;
+        case 'split':
+            addOverlay('frame');
+            const frame1 = state.overlays[0];
+            if (frame1) {
+                frame1.x = 20;
+                frame1.y = 20;
+                frame1.w = 600;
+                frame1.h = 680;
+                frame1.color = '#ffd93d';
+            }
+            addOverlay('frame');
+            const frame2 = state.overlays[1];
+            if (frame2) {
+                frame2.x = 660;
+                frame2.y = 20;
+                frame2.w = 600;
+                frame2.h = 680;
+                frame2.color = '#6bcb77';
+            }
+            break;
+        case 'overlay':
+            addOverlay('text');
+            const textOverlay = state.overlays[0];
+            if (textOverlay) {
+                textOverlay.text = 'LIVE STREAM';
+                textOverlay.x = 640;
+                textOverlay.y = 60;
+                textOverlay.size = 64;
+                textOverlay.color = '#e94560';
+            }
+            addOverlay('frame');
+            const frameOverlay2 = state.overlays[1];
+            if (frameOverlay2) {
+                frameOverlay2.x = 20;
+                frameOverlay2.y = 20;
+                frameOverlay2.w = 1240;
+                frameOverlay2.h = 680;
+                frameOverlay2.color = 'rgba(233,69,96,0.3)';
+                frameOverlay2.width = 2;
+            }
+            break;
+    }
+    
+    updateOverlayUI();
+    showToast(`Preset "${preset}" applied!`, 'success');
+}
+
+// ============================================
+// FPS MONITOR
+// ============================================
+
+let frameCount = 0;
+let lastFpsUpdate = Date.now();
+
+function startFPSMonitor() {
+    frameCount = 0;
+    lastFpsUpdate = Date.now();
+    
+    function updateFPS() {
+        frameCount++;
+        const now = Date.now();
+        if (now - lastFpsUpdate >= 1000) {
+            fpsCounter.textContent = `FPS: ${frameCount}`;
+            frameCount = 0;
+            lastFpsUpdate = now;
+            
+            // Update resolution
+            if (previewVideo.videoWidth) {
+                resolutionDisplay.textContent = `Resolution: ${previewVideo.videoWidth}x${previewVideo.videoHeight}`;
+            }
+        }
+        if (state.isStreaming) {
+            requestAnimationFrame(updateFPS);
+        }
+    }
+    updateFPS();
+}
+
+// ============================================
+// RECORDING
+// ============================================
+
+function toggleRecording() {
+    if (!state.isStreaming) {
+        showToast('Please start a stream first!', 'error');
+        return;
+    }
+
+    if (state.isRecording) {
+        stopRecording();
+    } else {
+        startRecording();
+    }
+}
+
+function startRecording() {
+    if (!state.canvas) {
+        showToast('Canvas not ready!', 'error');
+        return;
+    }
+
+    try {
+        const stream = state.canvas.captureStream(30);
+        // Add audio if available
+        if (state.mediaStream) {
+            const audioTracks = state.mediaStream.getAudioTracks();
+            if (audioTracks.length > 0) {
+                stream.addTrack(audioTracks[0]);
+            }
+        }
+
+        state.recorder = new MediaRecorder(stream, {
+            mimeType: 'video/webm;codecs=vp9'
+        });
+
+        state.recordedChunks = [];
+        state.recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+                state.recordedChunks.push(e.data);
+            }
+        };
+
+        state.recorder.onstop = () => {
+            const blob = new Blob(state.recordedChunks, {
+                type: 'video/webm'
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `recording-${new Date().toISOString()}.webm`;
+            a.click();
+            URL.revokeObjectURL(url);
+            state.recordedChunks = [];
+            showToast('Recording saved!', 'success');
+        };
+
+        state.recorder.start();
+        state.isRecording = true;
+        state.startTime = Date.now();
+        recordBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Recording';
+        recordBtn.classList.add('recording');
+        document.querySelector('.recording-dot').classList.add('active');
+        startRecordTimer();
+        showToast('Recording started!', 'success');
+        updateUI();
+    } catch (error) {
+        console.error('Error starting recording:', error);
+        showToast('Error: ' + error.message, 'error');
+    }
+}
+
+function stopRecording() {
+    if (state.recorder && state.isRecording) {
+        state.recorder.stop();
+        state.isRecording = false;
+        recordBtn.innerHTML = '<i class="fas fa-circle"></i> Record';
+        recordBtn.classList.remove('recording');
+        document.querySelector('.recording-dot').classList.remove('active');
+        clearInterval(state.recordTimer);
+        recordTime.textContent = '00:00:00';
+        updateUI();
+        showToast('Recording stopped!', 'success');
+    }
+}
+
+function startRecordTimer() {
+    clearInterval(state.recordTimer);
+    state.recordTimer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
+        const hours = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+        const minutes = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+        const seconds = String(elapsed % 60).padStart(2, '0');
+        recordTime.textContent = `${hours}:${minutes}:${seconds}`;
+    }, 1000);
+}
+
+// ============================================
+// SCREENSHOT
+// ============================================
+
+function takeScreenshot() {
+    if (!state.isStreaming) {
+        showToast('Please start a stream first!', 'error');
+        return;
+    }
+
+    if (!state.canvas) {
+        showToast('Canvas not ready!', 'error');
+        return;
+    }
+
+    const link = document.createElement('a');
+    link.download = `screenshot-${new Date().toISOString()}.png`;
+    link.href = state.canvas.toDataURL('image/png');
+    link.click();
+    showToast('Screenshot saved!', 'success');
+}
+
+// ============================================
+// UI UPDATES
+// ============================================
+
+function updateUI() {
+    startBtn.disabled = state.isStreaming;
+    stopBtn.disabled = !state.isStreaming;
+    
+    if (state.isStreaming) {
+        statusIndicator.className = 'status-online';
+        statusIndicator.innerHTML = '<i class="fas fa-circle"></i> Live';
+        startBtn.innerHTML = '<i class="fas fa-play"></i> Streaming';
+    } else {
+        statusIndicator.className = 'status-offline';
+        statusIndicator.innerHTML = '<i class="fas fa-circle"></i> Offline';
+        startBtn.innerHTML = '<i class="fas fa-play"></i> Start';
+    }
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 100);
+    
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            toast.remove();
+        }, 500);
+    }, 3000);
+}
+
+// ============================================
+// MODAL
+// ============================================
+
+function showHelp() {
+    showModal('📖 Help & Hotkeys', `
+        <p><strong>Hotkeys:</strong></p>
+        <p>Ctrl + Shift + S - Start/Stop Stream</p>
+        <p>Ctrl + 1 - Camera Source</p>
+        <p>Ctrl + 2 - Screen Source</p>
+        <p>Ctrl + 3 - Window Source</p>
+        <p>Ctrl + R - Start/Stop Recording</p>
+        <p>Ctrl + Shift + P - Take Screenshot</p>
+        <br>
+        <p><strong>Overlays:</strong></p>
+        <p>Click overlay buttons to add effects</p>
+        <p>Drag text and images to position them</p>
+    `);
+}
+
+function showAbout() {
+    showModal('🎥 Web OBS Studio', `
+        <p>Version 1.0.0</p>
+        <p>A complete web-based OBS alternative</p>
+        <p>Supports:</p>
+        <p>• Webcam & Screen Capture</p>
+        <p>• Text & Image Overlays</p>
+        <p>• Recording & Screenshots</p>
+        <p>• Hotkey Support</p>
+        <p>• Preset Layouts</p>
+        <br>
+        <p>Made with ❤️ for content creators</p>
+    `);
+}
+
+function showModal(title, content) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay show';
+    overlay.innerHTML = `
+        <div class="modal-content">
+            <h2>${title}</h2>
+            ${content}
+            <button class="btn-close-modal" onclick="this.closest('.modal-overlay').remove()">Close</button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+}
+
+// ============================================
+// EVENT LISTENERS
+// ============================================
+
+// Start/Stop
+startBtn.addEventListener('click', startStream);
+stopBtn.addEventListener('click', stopStream);
+
+// Recording
+recordBtn.addEventListener('click', toggleRecording);
+screenshotBtn.addEventListener('click', takeScreenshot);
+
+// Source Selection
+sourceButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+        sourceButtons.forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        state.currentSource = this.dataset.source;
+        showToast(`Source switched to: ${this.dataset.source}`, 'success');
+        if (state.isStreaming) {
+            stopStream();
+            setTimeout(startStream, 500);
+        }
+    });
+});
+
+// Overlays
+overlayButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+        const type = this.dataset.overlay;
+        if (type === 'clear') {
+            clearOverlays();
+        } else {
+            addOverlay(type);
+        }
+    });
+});
+
+// Presets
+presetButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+        applyPreset(this.dataset.preset);
+    });
+});
+
+// ============================================
+// HOTKEYS
+// ============================================
+
+document.addEventListener('keydown', function(e) {
+    // Ctrl + Shift + S - Start/Stop
+    if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+        e.preventDefault();
+        if (state.isStreaming) {
+            stopStream();
+        } else {
+            startStream();
+        }
+        return;
+    }
+
+    // Ctrl + R - Record
+    if (e.ctrlKey && e.key === 'r') {
+        e.preventDefault();
+        toggleRecording();
+        return;
+    }
+
+    // Ctrl + Shift + P - Screenshot
+    if (e.ctrlKey && e.shiftKey && e.key === 'P') {
+        e.preventDefault();
+        takeScreenshot();
+        return;
+    }
+
+    // Ctrl + 1,2,3 - Sources
+    if (e.ctrlKey && ['1', '2', '3'].includes(e.key)) {
+        e.preventDefault();
+        const sourceMap = {
+            '1': 'camera',
+            '2': 'screen',
+            '3': 'window'
+        };
+        const source = sourceMap[e.key];
+        sourceButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.source === source);
+        });
+        state.currentSource = source;
+        showToast(`Source switched to: ${source}`, 'success');
+        if (state.isStreaming) {
+            stopStream();
+            setTimeout(startStream, 500);
+        }
+        return;
+    }
+});
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+console.log('🎥 Web OBS Studio loaded!');
+console.log('📖 Press Ctrl+Shift+S to start/stop streaming');
+console.log('⌨️ Ctrl+1/2/3 to switch sources');
+console.log('🎬 Ctrl+R to record');
+console.log('📸 Ctrl+Shift+P for screenshot');
+showToast('🎥 Web OBS Studio loaded!', 'success');
