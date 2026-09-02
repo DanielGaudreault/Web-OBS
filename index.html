@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Browser Streamer</title>
+    <title>Browser Streamer - Dual Source</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -40,7 +40,9 @@
         <!-- Video Preview -->
         <section class="preview-section">
             <div class="preview-container">
-                <video id="previewVideo" autoplay playsinline muted></video>
+                <canvas id="mixCanvas"></canvas>
+                <video id="previewVideo" autoplay playsinline muted style="display:none;"></video>
+                <video id="cameraPreview" autoplay playsinline muted style="display:none;"></video>
                 <div class="overlay-container" id="overlayContainer"></div>
                 <div class="preview-controls">
                     <span id="fpsCounter">FPS: 0</span>
@@ -65,9 +67,39 @@
                     <button class="source-btn" data-source="screen">
                         <i class="fas fa-desktop"></i> Screen
                     </button>
-                    <button class="source-btn" data-source="window">
-                        <i class="fas fa-window-maximize"></i> Window
+                    <button class="source-btn" data-source="dual">
+                        <i class="fas fa-layer-group"></i> Dual (Camera + Screen)
                     </button>
+                </div>
+            </div>
+
+            <!-- Dual Source Layout -->
+            <div class="panel" id="dualLayoutPanel">
+                <h3><i class="fas fa-object-group"></i> Dual Layout</h3>
+                <div class="layout-grid">
+                    <button class="layout-btn active" data-layout="pip">
+                        <i class="fas fa-vector-square"></i> PiP
+                    </button>
+                    <button class="layout-btn" data-layout="side">
+                        <i class="fas fa-columns"></i> Side-by-Side
+                    </button>
+                    <button class="layout-btn" data-layout="grid">
+                        <i class="fas fa-th"></i> Grid
+                    </button>
+                </div>
+                <div class="form-group" style="margin-top: 8px;">
+                    <label>Camera Position</label>
+                    <select id="cameraPosition" class="form-select">
+                        <option value="bottom-right">Bottom Right</option>
+                        <option value="bottom-left">Bottom Left</option>
+                        <option value="top-right">Top Right</option>
+                        <option value="top-left">Top Left</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Camera Size</label>
+                    <input type="range" id="cameraSize" min="0.1" max="0.5" step="0.05" value="0.25" class="form-range">
+                    <span id="cameraSizeLabel">25%</span>
                 </div>
             </div>
 
@@ -152,8 +184,12 @@
                         <span id="streamUptime" class="info-value">00:00:00</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label">Device:</span>
+                        <span class="info-label">Source:</span>
                         <span id="deviceInfo" class="info-value">Camera</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Mode:</span>
+                        <span id="modeInfo" class="info-value">Single</span>
                     </div>
                 </div>
             </div>
