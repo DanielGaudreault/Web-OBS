@@ -16,7 +16,16 @@ const state = {
     overlayIdCounter: 0,
     canvas: null,
     canvasStream: null,
-    animationFrame: null
+    animationFrame: null,
+    platform: 'twitch',
+    streamKey: '',
+    streamTitle: '',
+    streamCategory: '',
+    streamUptime: 0,
+    uptimeTimer: null,
+    hotkeys: {},
+    recordingHotkeys: false,
+    currentHotkeyInput: null
 };
 
 // ===== DOM ELEMENTS =====
@@ -29,10 +38,178 @@ const screenshotBtn = document.getElementById('screenshotBtn');
 const recordTime = document.getElementById('recordTime');
 const fpsCounter = document.getElementById('fpsCounter');
 const resolutionDisplay = document.getElementById('resolutionDisplay');
+const bitrateDisplay = document.getElementById('bitrateDisplay');
 const overlayContainer = document.getElementById('overlayContainer');
-const sourceButtons = document.querySelectorAll('.source-btn');
-const overlayButtons = document.querySelectorAll('.overlay-btn');
-const presetButtons = document.querySelectorAll('.preset-btn');
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsModal = document.getElementById('settingsModal');
+const streamPlatform = document.getElementById('streamPlatform');
+const streamStatus = document.getElementById('streamStatus');
+const streamUptime = document.getElementById('streamUptime');
+
+// ============================================
+// SETTINGS / HOTKEY SYSTEM
+// ============================================
+
+const DEFAULT_HOTKEYS = {
+    'hk-stream': 'Ctrl+Shift+S',
+    'hk-record': 'Ctrl+Shift+R',
+    'hk-screenshot': 'Ctrl+Shift+P',
+    'hk-camera': 'Ctrl+1',
+    'hk-screen': 'Ctrl+2',
+    'hk-window': 'Ctrl+3',
+    'hk-overlay': 'Ctrl+Shift+O',
+    'hk-preset1': 'Alt+1',
+    'hk-preset2': 'Alt+2',
+    'hk-preset3': 'Alt+3',
+    'hk-preset4': 'Alt+4'
+};
+
+let hotkeyListeners = {};
+
+function loadHotkeys() {
+    const saved = localStorage.getItem('obs_hotkeys');
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            state.hotkeys = parsed;
+        } catch (e) {
+            state.hotkeys = { ...DEFAULT_HOTKEYS };
+        }
+    } else {
+        state.hotkeys = { ...DEFAULT_HOTKEYS };
+    }
+    
+    // Update UI
+    Object.keys(state.hotkeys).forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.value = state.hotkeys[id] || '';
+        }
+    });
+}
+
+function saveHotkeys() {
+    localStorage.setItem('obs_hotkeys', JSON.stringify(state.hotkeys));
+    showToast('Hotkeys saved!', 'success');
+    registerHotkeys();
+}
+
+function resetHotkeys() {
+    state.hotkeys = { ...DEFAULT_HOTKEYS };
+    Object.keys(state.hotkeys).forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.value = state.hotkeys[id];
+        }
+    });
+    saveHotkeys();
+    showToast('Hotkeys reset to defaults', 'success');
+}
+
+function clearHotkey(id) {
+    state.hotkeys[id] = '';
+    const input = document.getElementById(id);
+    if (input) {
+        input.value = '';
+    }
+    saveHotkeys();
+}
+
+function registerHotkeys() {
+    // Remove old listeners
+    Object.keys(hotkeyListeners).forEach(key => {
+        document.removeEventListener('keydown', hotkeyListeners[key]);
+    });
+    hotkeyListeners = {};
+
+    // Register new hotkeys
+    Object.keys(state.hotkeys).forEach(id => {
+        const hotkey = state.hotkeys[id];
+        if (!hotkey) return;
+        
+        const keys = hotkey.split('+').map(k => k.trim());
+        const listener = function(e) {
+            const pressed = [];
+            if (e.ctrlKey) pressed.push('Ctrl');
+            if (e.shiftKey) pressed.push('Shift');
+            if (e.altKey) pressed.push('Alt');
+            pressed.push(e.key);
+            
+            const pressedStr = pressed.join('+');
+            if (pressedStr === hotkey) {
+                e.preventDefault();
+                handleHotkeyAction(id);
+            }
+        };
+        
+        hotkeyListeners[id] = listener;
+        document.addEventListener('keydown', listener);
+    });
+}
+
+function handleHotkeyAction(id) {
+    const actions = {
+        'hk-stream': () => toggleStream(),
+        'hk-record': () => toggleRecording(),
+        'hk-screenshot': () => takeScreenshot(),
+        'hk-camera': () => switchSource('camera'),
+        'hk-screen': () => switchSource('screen'),
+        'hk-window': () => switchSource('window'),
+        'hk-overlay': () => toggleOverlayVisibility(),
+        'hk-preset1': () => applyPreset('default'),
+        'hk-preset2': () => applyPreset('fullscreen'),
+        'hk-preset3': () => applyPreset('split'),
+        'hk-preset4': () => applyPreset('overlay')
+    };
+    
+    if (actions[id]) {
+        actions[id]();
+        showToast(`Hotkey: ${id.replace('hk-', '')}`, 'success');
+    }
+}
+
+function toggleOverlayVisibility() {
+    const containers = document.querySelectorAll('.overlay-container > *');
+    const hidden = containers[0]?.style.display === 'none';
+    containers.forEach(el => {
+        el.style.display = hidden ? '' : 'none';
+    });
+}
+
+// ============================================
+// STREAMING PLATFORM CONNECTION
+// ============================================
+
+function connectToPlatform() {
+    const platform = state.platform;
+    const streamKey = document.getElementById('streamKey')?.value || '';
+    
+    if (!streamKey && platform !== 'custom') {
+        showToast('Please enter your stream key!', 'error');
+        return false;
+    }
+    
+    const platformNames = {
+        'twitch': 'Twitch',
+        'youtube': 'YouTube',
+        'tiktok': 'TikTok',
+        'facebook': 'Facebook',
+        'custom': 'Custom RTMP'
+    };
+    
+    streamPlatform.textContent = platformNames[platform] || 'Connected';
+    streamStatus.textContent = 'Live';
+    streamStatus.style.color = '#51cf66';
+    
+    showToast(`Connected to ${platformNames[platform]}!`, 'success');
+    return true;
+}
+
+function disconnectFromPlatform() {
+    streamPlatform.textContent = 'Not Connected';
+    streamStatus.textContent = 'Offline';
+    streamStatus.style.color = '#ff6b6b';
+}
 
 // ============================================
 // VIDEO CAPTURE
@@ -40,6 +217,13 @@ const presetButtons = document.querySelectorAll('.preset-btn');
 
 async function startStream() {
     try {
+        // Check if connected to platform
+        if (!document.getElementById('streamKey')?.value) {
+            showToast('Please set up your stream key in Settings!', 'error');
+            settingsModal.classList.add('show');
+            return;
+        }
+        
         let stream;
         let constraints = { video: true, audio: true };
 
@@ -70,11 +254,13 @@ async function startStream() {
         await previewVideo.play();
 
         state.isStreaming = true;
+        connectToPlatform();
         updateUI();
         showToast('Stream started successfully!', 'success');
         
         // Start FPS counter
         startFPSMonitor();
+        startUptimeTracker();
 
         // Start overlay rendering
         startOverlayRendering();
@@ -99,9 +285,43 @@ function stopStream() {
             cancelAnimationFrame(state.animationFrame);
             state.animationFrame = null;
         }
+        
+        // Stop uptime tracker
+        if (state.uptimeTimer) {
+            clearInterval(state.uptimeTimer);
+            state.uptimeTimer = null;
+        }
+        state.streamUptime = 0;
+        streamUptime.textContent = '00:00:00';
 
+        disconnectFromPlatform();
         updateUI();
         showToast('Stream stopped', 'success');
+        
+        // Stop recording if active
+        if (state.isRecording) {
+            stopRecording();
+        }
+    }
+}
+
+function toggleStream() {
+    if (state.isStreaming) {
+        stopStream();
+    } else {
+        startStream();
+    }
+}
+
+function switchSource(source) {
+    state.currentSource = source;
+    document.querySelectorAll('.source-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.source === source);
+    });
+    showToast(`Switched to ${source}`, 'success');
+    if (state.isStreaming) {
+        stopStream();
+        setTimeout(startStream, 500);
     }
 }
 
@@ -110,13 +330,11 @@ function stopStream() {
 // ============================================
 
 function startOverlayRendering() {
-    // Create a canvas for overlays
     const canvas = document.createElement('canvas');
     canvas.width = 1280;
     canvas.height = 720;
     state.canvas = canvas;
 
-    // Get the video element and draw overlays on canvas
     function renderFrame() {
         if (!state.isStreaming || !previewVideo.videoWidth) {
             state.animationFrame = requestAnimationFrame(renderFrame);
@@ -124,11 +342,8 @@ function startOverlayRendering() {
         }
 
         const ctx = canvas.getContext('2d');
-        
-        // Draw video frame
         ctx.drawImage(previewVideo, 0, 0, canvas.width, canvas.height);
         
-        // Draw overlays
         state.overlays.forEach(overlay => {
             if (overlay.type === 'text') {
                 ctx.fillStyle = overlay.color || '#ffffff';
@@ -179,7 +394,6 @@ function addOverlay(type) {
             return;
         }
     } else if (type === 'image') {
-        // Create file input for image upload
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
@@ -233,8 +447,6 @@ function updateOverlayUI() {
             el.style.top = overlay.y + 'px';
             el.style.color = overlay.color || '#ffffff';
             el.style.fontSize = (overlay.size || 48) + 'px';
-            
-            // Make draggable
             makeDraggable(el, overlay);
         } else if (overlay.type === 'frame') {
             el.className = 'frame-overlay';
@@ -294,7 +506,6 @@ function applyPreset(preset) {
     
     switch(preset) {
         case 'default':
-            // No overlays
             break;
         case 'fullscreen':
             addOverlay('frame');
@@ -360,20 +571,29 @@ function applyPreset(preset) {
 
 let frameCount = 0;
 let lastFpsUpdate = Date.now();
+let bitrateHistory = [];
 
 function startFPSMonitor() {
     frameCount = 0;
     lastFpsUpdate = Date.now();
+    bitrateHistory = [];
     
     function updateFPS() {
         frameCount++;
         const now = Date.now();
         if (now - lastFpsUpdate >= 1000) {
             fpsCounter.textContent = `FPS: ${frameCount}`;
+            
+            // Simulate bitrate (for demo purposes)
+            const bitrate = 3000 + Math.random() * 2000;
+            bitrateHistory.push(bitrate);
+            if (bitrateHistory.length > 10) bitrateHistory.shift();
+            const avgBitrate = bitrateHistory.reduce((a, b) => a + b, 0) / bitrateHistory.length;
+            bitrateDisplay.textContent = `Bitrate: ${Math.round(avgBitrate)} Kbps`;
+            
             frameCount = 0;
             lastFpsUpdate = now;
             
-            // Update resolution
             if (previewVideo.videoWidth) {
                 resolutionDisplay.textContent = `Resolution: ${previewVideo.videoWidth}x${previewVideo.videoHeight}`;
             }
@@ -383,6 +603,20 @@ function startFPSMonitor() {
         }
     }
     updateFPS();
+}
+
+function startUptimeTracker() {
+    state.streamUptime = 0;
+    if (state.uptimeTimer) {
+        clearInterval(state.uptimeTimer);
+    }
+    state.uptimeTimer = setInterval(() => {
+        state.streamUptime++;
+        const hours = String(Math.floor(state.streamUptime / 3600)).padStart(2, '0');
+        const minutes = String(Math.floor((state.streamUptime % 3600) / 60)).padStart(2, '0');
+        const seconds = String(state.streamUptime % 60).padStart(2, '0');
+        streamUptime.textContent = `${hours}:${minutes}:${seconds}`;
+    }, 1000);
 }
 
 // ============================================
@@ -410,7 +644,6 @@ function startRecording() {
 
     try {
         const stream = state.canvas.captureStream(30);
-        // Add audio if available
         if (state.mediaStream) {
             const audioTracks = state.mediaStream.getAudioTracks();
             if (audioTracks.length > 0) {
@@ -436,7 +669,7 @@ function startRecording() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `recording-${new Date().toISOString()}.webm`;
+            a.download = `recording-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
             a.click();
             URL.revokeObjectURL(url);
             state.recordedChunks = [];
@@ -499,7 +732,7 @@ function takeScreenshot() {
     }
 
     const link = document.createElement('a');
-    link.download = `screenshot-${new Date().toISOString()}.png`;
+    link.download = `screenshot-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
     link.href = state.canvas.toDataURL('image/png');
     link.click();
     showToast('Screenshot saved!', 'success');
@@ -520,7 +753,7 @@ function updateUI() {
     } else {
         statusIndicator.className = 'status-offline';
         statusIndicator.innerHTML = '<i class="fas fa-circle"></i> Offline';
-        startBtn.innerHTML = '<i class="fas fa-play"></i> Start';
+        startBtn.innerHTML = '<i class="fas fa-play"></i> Start Streaming';
     }
 }
 
@@ -543,157 +776,160 @@ function showToast(message, type = 'info') {
 }
 
 // ============================================
-// MODAL
+// SETTINGS MODAL
 // ============================================
 
-function showHelp() {
-    showModal('📖 Help & Hotkeys', `
-        <p><strong>Hotkeys:</strong></p>
-        <p>Ctrl + Shift + S - Start/Stop Stream</p>
-        <p>Ctrl + 1 - Camera Source</p>
-        <p>Ctrl + 2 - Screen Source</p>
-        <p>Ctrl + 3 - Window Source</p>
-        <p>Ctrl + R - Start/Stop Recording</p>
-        <p>Ctrl + Shift + P - Take Screenshot</p>
-        <br>
-        <p><strong>Overlays:</strong></p>
-        <p>Click overlay buttons to add effects</p>
-        <p>Drag text and images to position them</p>
-    `);
+function openSettings() {
+    settingsModal.classList.add('show');
+    loadSettings();
 }
 
-function showAbout() {
-    showModal('🎥 Web OBS Studio', `
-        <p>Version 1.0.0</p>
-        <p>A complete web-based OBS alternative</p>
-        <p>Supports:</p>
-        <p>• Webcam & Screen Capture</p>
-        <p>• Text & Image Overlays</p>
-        <p>• Recording & Screenshots</p>
-        <p>• Hotkey Support</p>
-        <p>• Preset Layouts</p>
-        <br>
-        <p>Made with ❤️ for content creators</p>
-    `);
+function closeSettings() {
+    settingsModal.classList.remove('show');
 }
 
-function showModal(title, content) {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay show';
-    overlay.innerHTML = `
-        <div class="modal-content">
-            <h2>${title}</h2>
-            ${content}
-            <button class="btn-close-modal" onclick="this.closest('.modal-overlay').remove()">Close</button>
-        </div>
-    `;
-    document.body.appendChild(overlay);
+function loadSettings() {
+    // Load saved settings
+    const saved = localStorage.getItem('obs_settings');
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            if (parsed.platform) {
+                document.querySelectorAll('.platform-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.platform === parsed.platform);
+                });
+                state.platform = parsed.platform;
+            }
+            if (parsed.streamKey) {
+                document.getElementById('streamKey').value = parsed.streamKey;
+            }
+            if (parsed.streamTitle) {
+                document.getElementById('streamTitle').value = parsed.streamTitle;
+            }
+            if (parsed.streamCategory) {
+                document.getElementById('streamCategory').value = parsed.streamCategory;
+            }
+            if (parsed.resolution) {
+                document.getElementById('videoResolution').value = parsed.resolution;
+            }
+            if (parsed.fps) {
+                document.getElementById('videoFPS').value = parsed.fps;
+            }
+            if (parsed.bitrate) {
+                document.getElementById('videoBitrate').value = parsed.bitrate;
+            }
+            if (parsed.audioBitrate) {
+                document.getElementById('audioBitrate').value = parsed.audioBitrate;
+            }
+            if (parsed.volume !== undefined) {
+                document.getElementById('audioVolume').value = parsed.volume;
+                document.getElementById('volumeLabel').textContent = parsed.volume + '%';
+            }
+            if (parsed.encoder) {
+                document.getElementById('encoder').value = parsed.encoder;
+            }
+            if (parsed.keyframeInterval) {
+                document.getElementById('keyframeInterval').value = parsed.keyframeInterval;
+            }
+            if (parsed.lowLatency !== undefined) {
+                document.getElementById('lowLatency').checked = parsed.lowLatency;
+            }
+            if (parsed.hardwareEncoding !== undefined) {
+                document.getElementById('hardwareEncoding').checked = parsed.hardwareEncoding;
+            }
+        } catch (e) {
+            console.error('Error loading settings:', e);
+        }
+    }
+}
+
+function saveSettings() {
+    const settings = {
+        platform: state.platform,
+        streamKey: document.getElementById('streamKey').value,
+        streamTitle: document.getElementById('streamTitle').value,
+        streamCategory: document.getElementById('streamCategory').value,
+        resolution: document.getElementById('videoResolution').value,
+        fps: parseInt(document.getElementById('videoFPS').value),
+        bitrate: parseInt(document.getElementById('videoBitrate').value),
+        audioBitrate: parseInt(document.getElementById('audioBitrate').value),
+        volume: parseInt(document.getElementById('audioVolume').value),
+        encoder: document.getElementById('encoder').value,
+        keyframeInterval: parseInt(document.getElementById('keyframeInterval').value),
+        lowLatency: document.getElementById('lowLatency').checked,
+        hardwareEncoding: document.getElementById('hardwareEncoding').checked
+    };
+    
+    localStorage.setItem('obs_settings', JSON.stringify(settings));
+    showToast('Settings saved!', 'success');
+    closeSettings();
 }
 
 // ============================================
-// EVENT LISTENERS
+// SETTINGS TAB SWITCHING
 // ============================================
 
-// Start/Stop
-startBtn.addEventListener('click', startStream);
-stopBtn.addEventListener('click', stopStream);
-
-// Recording
-recordBtn.addEventListener('click', toggleRecording);
-screenshotBtn.addEventListener('click', takeScreenshot);
-
-// Source Selection
-sourceButtons.forEach(btn => {
-    btn.addEventListener('click', function() {
-        sourceButtons.forEach(b => b.classList.remove('active'));
-        this.classList.add('active');
-        state.currentSource = this.dataset.source;
-        showToast(`Source switched to: ${this.dataset.source}`, 'success');
-        if (state.isStreaming) {
-            stopStream();
-            setTimeout(startStream, 500);
+document.addEventListener('DOMContentLoaded', function() {
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+        });
+    });
+    
+    // Platform selection
+    document.querySelectorAll('.platform-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            state.platform = this.dataset.platform;
+            showToast(`Platform set to: ${this.textContent.trim()}`, 'success');
+        });
+    });
+    
+    // Volume slider
+    const volumeSlider = document.getElementById('audioVolume');
+    if (volumeSlider) {
+        volumeSlider.addEventListener('input', function() {
+            document.getElementById('volumeLabel').textContent = this.value + '%';
+        });
+    }
+    
+    // Hotkey recording
+    document.querySelectorAll('.hotkey-input').forEach(input => {
+        input.addEventListener('focus', function() {
+            state.currentHotkeyInput = this;
+            this.value = 'Press keys...';
+            this.classList.add('recording');
+        });
+        
+        input.addEventListener('blur', function() {
+            if (this.value === 'Press keys...') {
+                this.value = '';
+            }
+            this.classList.remove('recording');
+            state.currentHotkeyInput = null;
+        });
+    });
+    
+    // Settings button
+    settingsBtn.addEventListener('click', openSettings);
+    
+    // Close modal on outside click
+    settingsModal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeSettings();
         }
     });
 });
 
-// Overlays
-overlayButtons.forEach(btn => {
-    btn.addEventListener('click', function() {
-        const type = this.dataset.overlay;
-        if (type === 'clear') {
-            clearOverlays();
-        } else {
-            addOverlay(type);
-        }
-    });
-});
-
-// Presets
-presetButtons.forEach(btn => {
-    btn.addEventListener('click', function() {
-        applyPreset(this.dataset.preset);
-    });
-});
-
 // ============================================
-// HOTKEYS
+// KEYBOARD HOTKEY RECORDING
 // ============================================
 
 document.addEventListener('keydown', function(e) {
-    // Ctrl + Shift + S - Start/Stop
-    if (e.ctrlKey && e.shiftKey && e.key === 'S') {
-        e.preventDefault();
-        if (state.isStreaming) {
-            stopStream();
-        } else {
-            startStream();
-        }
-        return;
-    }
-
-    // Ctrl + R - Record
-    if (e.ctrlKey && e.key === 'r') {
-        e.preventDefault();
-        toggleRecording();
-        return;
-    }
-
-    // Ctrl + Shift + P - Screenshot
-    if (e.ctrlKey && e.shiftKey && e.key === 'P') {
-        e.preventDefault();
-        takeScreenshot();
-        return;
-    }
-
-    // Ctrl + 1,2,3 - Sources
-    if (e.ctrlKey && ['1', '2', '3'].includes(e.key)) {
-        e.preventDefault();
-        const sourceMap = {
-            '1': 'camera',
-            '2': 'screen',
-            '3': 'window'
-        };
-        const source = sourceMap[e.key];
-        sourceButtons.forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.source === source);
-        });
-        state.currentSource = source;
-        showToast(`Source switched to: ${source}`, 'success');
-        if (state.isStreaming) {
-            stopStream();
-            setTimeout(startStream, 500);
-        }
-        return;
-    }
-});
-
-// ============================================
-// INITIALIZATION
-// ============================================
-
-console.log('🎥 Web OBS Studio loaded!');
-console.log('📖 Press Ctrl+Shift+S to start/stop streaming');
-console.log('⌨️ Ctrl+1/2/3 to switch sources');
-console.log('🎬 Ctrl+R to record');
-console.log('📸 Ctrl+Shift+P for screenshot');
-showToast('🎥 Web OBS Studio loaded!', 'success');
+    // Don't trigger hotkeys if typing in inputs
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
