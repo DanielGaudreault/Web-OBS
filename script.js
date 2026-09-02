@@ -932,4 +932,141 @@ document.addEventListener('DOMContentLoaded', function() {
 
 document.addEventListener('keydown', function(e) {
     // Don't trigger hotkeys if typing in inputs
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+        return;
+    }
+    
+    // Hotkey recording mode
+    if (state.currentHotkeyInput) {
+        e.preventDefault();
+        const keys = [];
+        if (e.ctrlKey) keys.push('Ctrl');
+        if (e.shiftKey) keys.push('Shift');
+        if (e.altKey) keys.push('Alt');
+        keys.push(e.key);
+        const hotkeyStr = keys.join('+');
+        state.currentHotkeyInput.value = hotkeyStr;
+        state.hotkeys[state.currentHotkeyInput.id] = hotkeyStr;
+        state.currentHotkeyInput.classList.remove('recording');
+        state.currentHotkeyInput.blur();
+        saveHotkeys();
+        return;
+    }
+});
+
+// ============================================
+// MODAL HELPERS
+// ============================================
+
+function showHelp() {
+    showModal('📖 Help & Hotkeys', `
+        <p><strong>Default Hotkeys:</strong></p>
+        <p>Ctrl+Shift+S - Start/Stop Stream</p>
+        <p>Ctrl+Shift+R - Start/Stop Recording</p>
+        <p>Ctrl+Shift+P - Screenshot</p>
+        <p>Ctrl+1/2/3 - Switch Sources</p>
+        <p>Ctrl+Shift+O - Toggle Overlays</p>
+        <p>Alt+1/2/3/4 - Scene Presets</p>
+        <br>
+        <p><strong>Customize:</strong></p>
+        <p>Click the Settings gear icon (⚙️) to set your own hotkeys!</p>
+        <p>Connect to Twitch, YouTube, TikTok, and more!</p>
+    `);
+}
+
+function showAbout() {
+    showModal('🎥 Web OBS Studio', `
+        <p>Version 2.0.0</p>
+        <p>Complete web-based OBS alternative</p>
+        <p><strong>Features:</strong></p>
+        <p>• Webcam & Screen Capture</p>
+        <p>• Multi-platform streaming (Twitch, YouTube, TikTok, Facebook)</p>
+        <p>• Custom hotkey system (OBS-style)</p>
+        <p>• Text & Image Overlays</p>
+        <p>• Recording & Screenshots</p>
+        <p>• Preset Layouts</p>
+        <p>• RTMP Support</p>
+        <br>
+        <p>Made with ❤️ for content creators</p>
+    `);
+}
+
+function showModal(title, content) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay show';
+    overlay.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>${title}</h2>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+            </div>
+            <div class="modal-body">${content}</div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+}
+
+// ============================================
+// EVENT LISTENERS
+// ============================================
+
+// Start/Stop
+startBtn.addEventListener('click', toggleStream);
+stopBtn.addEventListener('click', stopStream);
+
+// Recording
+recordBtn.addEventListener('click', toggleRecording);
+screenshotBtn.addEventListener('click', takeScreenshot);
+
+// Source Selection
+document.querySelectorAll('.source-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        switchSource(this.dataset.source);
+    });
+});
+
+// Overlays
+document.querySelectorAll('.overlay-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const type = this.dataset.overlay;
+        if (type === 'clear') {
+            clearOverlays();
+        } else {
+            addOverlay(type);
+        }
+    });
+});
+
+// Presets
+document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        applyPreset(this.dataset.preset);
+    });
+});
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+function init() {
+    loadHotkeys();
+    registerHotkeys();
+    loadSettings();
+    
+    console.log('🎥 Web OBS Studio v2.0 loaded!');
+    console.log('📖 Press Ctrl+Shift+S to start/stop streaming');
+    console.log('⌨️ Click Settings (⚙️) to customize hotkeys');
+    console.log('🎬 Ctrl+Shift+R to record');
+    console.log('📸 Ctrl+Shift+P for screenshot');
+    showToast('🎥 Web OBS Studio loaded!', 'success');
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+} else {
+    init();
+}
