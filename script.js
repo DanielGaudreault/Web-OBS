@@ -1,5 +1,5 @@
 // ============================================
-// WEB OBS STUDIO - COMPLETE SCRIPT
+// WEB OBS STUDIO - STREAM KEY EDITION
 // ============================================
 
 // ===== STATE =====
@@ -23,9 +23,7 @@ const state = {
     streamCategory: '',
     streamUptime: 0,
     uptimeTimer: null,
-    hotkeys: {},
-    recordingHotkeys: false,
-    currentHotkeyInput: null
+    streamKeyVisible: false
 };
 
 // ===== DOM ELEMENTS =====
@@ -45,136 +43,7 @@ const settingsModal = document.getElementById('settingsModal');
 const streamPlatform = document.getElementById('streamPlatform');
 const streamStatus = document.getElementById('streamStatus');
 const streamUptime = document.getElementById('streamUptime');
-
-// ============================================
-// SETTINGS / HOTKEY SYSTEM
-// ============================================
-
-const DEFAULT_HOTKEYS = {
-    'hk-stream': 'Ctrl+Shift+S',
-    'hk-record': 'Ctrl+Shift+R',
-    'hk-screenshot': 'Ctrl+Shift+P',
-    'hk-camera': 'Ctrl+1',
-    'hk-screen': 'Ctrl+2',
-    'hk-window': 'Ctrl+3',
-    'hk-overlay': 'Ctrl+Shift+O',
-    'hk-preset1': 'Alt+1',
-    'hk-preset2': 'Alt+2',
-    'hk-preset3': 'Alt+3',
-    'hk-preset4': 'Alt+4'
-};
-
-let hotkeyListeners = {};
-
-function loadHotkeys() {
-    const saved = localStorage.getItem('obs_hotkeys');
-    if (saved) {
-        try {
-            const parsed = JSON.parse(saved);
-            state.hotkeys = parsed;
-        } catch (e) {
-            state.hotkeys = { ...DEFAULT_HOTKEYS };
-        }
-    } else {
-        state.hotkeys = { ...DEFAULT_HOTKEYS };
-    }
-    
-    // Update UI
-    Object.keys(state.hotkeys).forEach(id => {
-        const input = document.getElementById(id);
-        if (input) {
-            input.value = state.hotkeys[id] || '';
-        }
-    });
-}
-
-function saveHotkeys() {
-    localStorage.setItem('obs_hotkeys', JSON.stringify(state.hotkeys));
-    showToast('Hotkeys saved!', 'success');
-    registerHotkeys();
-}
-
-function resetHotkeys() {
-    state.hotkeys = { ...DEFAULT_HOTKEYS };
-    Object.keys(state.hotkeys).forEach(id => {
-        const input = document.getElementById(id);
-        if (input) {
-            input.value = state.hotkeys[id];
-        }
-    });
-    saveHotkeys();
-    showToast('Hotkeys reset to defaults', 'success');
-}
-
-function clearHotkey(id) {
-    state.hotkeys[id] = '';
-    const input = document.getElementById(id);
-    if (input) {
-        input.value = '';
-    }
-    saveHotkeys();
-}
-
-function registerHotkeys() {
-    // Remove old listeners
-    Object.keys(hotkeyListeners).forEach(key => {
-        document.removeEventListener('keydown', hotkeyListeners[key]);
-    });
-    hotkeyListeners = {};
-
-    // Register new hotkeys
-    Object.keys(state.hotkeys).forEach(id => {
-        const hotkey = state.hotkeys[id];
-        if (!hotkey) return;
-        
-        const keys = hotkey.split('+').map(k => k.trim());
-        const listener = function(e) {
-            const pressed = [];
-            if (e.ctrlKey) pressed.push('Ctrl');
-            if (e.shiftKey) pressed.push('Shift');
-            if (e.altKey) pressed.push('Alt');
-            pressed.push(e.key);
-            
-            const pressedStr = pressed.join('+');
-            if (pressedStr === hotkey) {
-                e.preventDefault();
-                handleHotkeyAction(id);
-            }
-        };
-        
-        hotkeyListeners[id] = listener;
-        document.addEventListener('keydown', listener);
-    });
-}
-
-function handleHotkeyAction(id) {
-    const actions = {
-        'hk-stream': () => toggleStream(),
-        'hk-record': () => toggleRecording(),
-        'hk-screenshot': () => takeScreenshot(),
-        'hk-camera': () => switchSource('camera'),
-        'hk-screen': () => switchSource('screen'),
-        'hk-window': () => switchSource('window'),
-        'hk-overlay': () => toggleOverlayVisibility(),
-        'hk-preset1': () => applyPreset('default'),
-        'hk-preset2': () => applyPreset('fullscreen'),
-        'hk-preset3': () => applyPreset('split'),
-        'hk-preset4': () => applyPreset('overlay')
-    };
-    
-    if (actions[id]) {
-        actions[id]();
-        showToast(`Hotkey: ${id.replace('hk-', '')}`, 'success');
-    }
-}
-
-function toggleOverlayVisibility() {
-    const containers = document.querySelectorAll('.overlay-container > *');
-    const hidden = containers[0]?.style.display === 'none';
-    containers.forEach(el => {
-        el.style.display = hidden ? '' : 'none';
-    });
-}
+const streamKeyStatus = document.getElementById('streamKeyStatus');
 
 // ============================================
 // STREAMING PLATFORM CONNECTION
@@ -185,7 +54,7 @@ function connectToPlatform() {
     const streamKey = document.getElementById('streamKey')?.value || '';
     
     if (!streamKey && platform !== 'custom') {
-        showToast('Please enter your stream key!', 'error');
+        showToast('Please enter your stream key in Settings!', 'error');
         return false;
     }
     
@@ -197,9 +66,27 @@ function connectToPlatform() {
         'custom': 'Custom RTMP'
     };
     
+    const platformColors = {
+        'twitch': '#9146FF',
+        'youtube': '#FF0000',
+        'tiktok': '#00F2EA',
+        'facebook': '#1877F2',
+        'custom': '#4a6fa5'
+    };
+    
     streamPlatform.textContent = platformNames[platform] || 'Connected';
+    streamPlatform.style.color = platformColors[platform] || '#51cf66';
     streamStatus.textContent = 'Live';
     streamStatus.style.color = '#51cf66';
+    
+    // Show stream key status
+    if (streamKey) {
+        const maskedKey = streamKey.length > 8 ? 
+            streamKey.substring(0, 4) + '••••' + streamKey.substring(streamKey.length - 4) : 
+            '••••••••';
+        streamKeyStatus.textContent = `Set (${maskedKey})`;
+        streamKeyStatus.style.color = '#51cf66';
+    }
     
     showToast(`Connected to ${platformNames[platform]}!`, 'success');
     return true;
@@ -207,8 +94,11 @@ function connectToPlatform() {
 
 function disconnectFromPlatform() {
     streamPlatform.textContent = 'Not Connected';
+    streamPlatform.style.color = '#aaa';
     streamStatus.textContent = 'Offline';
     streamStatus.style.color = '#ff6b6b';
+    streamKeyStatus.textContent = 'Not Set';
+    streamKeyStatus.style.color = '#ff6b6b';
 }
 
 // ============================================
@@ -217,9 +107,10 @@ function disconnectFromPlatform() {
 
 async function startStream() {
     try {
-        // Check if connected to platform
-        if (!document.getElementById('streamKey')?.value) {
-            showToast('Please set up your stream key in Settings!', 'error');
+        // Check if stream key is set
+        const streamKey = document.getElementById('streamKey')?.value;
+        if (!streamKey) {
+            showToast('Please set your stream key in Settings!', 'error');
             settingsModal.classList.add('show');
             return;
         }
@@ -227,23 +118,32 @@ async function startStream() {
         let stream;
         let constraints = { video: true, audio: true };
 
+        // Get resolution from settings
+        const resolution = document.getElementById('videoResolution')?.value || '1280x720';
+        const [width, height] = resolution.split('x').map(Number);
+        const fps = parseInt(document.getElementById('videoFPS')?.value || 30);
+
         switch (state.currentSource) {
             case 'camera':
                 constraints = {
-                    video: { facingMode: 'user', width: 1280, height: 720 },
+                    video: { 
+                        facingMode: 'user', 
+                        width: { ideal: width },
+                        height: { ideal: height }
+                    },
                     audio: true
                 };
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
                 break;
             case 'screen':
                 stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { width: 1920, height: 1080 },
+                    video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
                     audio: true
                 });
                 break;
             case 'window':
                 stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { width: 1280, height: 720 },
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
                     audio: true
                 });
                 break;
@@ -331,8 +231,10 @@ function switchSource(source) {
 
 function startOverlayRendering() {
     const canvas = document.createElement('canvas');
-    canvas.width = 1280;
-    canvas.height = 720;
+    const resolution = document.getElementById('videoResolution')?.value || '1280x720';
+    const [width, height] = resolution.split('x').map(Number);
+    canvas.width = width;
+    canvas.height = height;
     state.canvas = canvas;
 
     function renderFrame() {
@@ -739,6 +641,60 @@ function takeScreenshot() {
 }
 
 // ============================================
+// STREAM KEY HELPERS
+// ============================================
+
+function toggleStreamKeyVisibility() {
+    const input = document.getElementById('streamKey');
+    state.streamKeyVisible = !state.streamKeyVisible;
+    input.type = state.streamKeyVisible ? 'text' : 'password';
+    const btn = document.querySelector('.stream-key-help .btn:first-child');
+    btn.innerHTML = state.streamKeyVisible ? '<i class="fas fa-eye-slash"></i> Hide' : '<i class="fas fa-eye"></i> Show';
+}
+
+function copyStreamKey() {
+    const input = document.getElementById('streamKey');
+    if (input.value) {
+        navigator.clipboard.writeText(input.value).then(() => {
+            showToast('Stream key copied to clipboard!', 'success');
+        }).catch(() => {
+            // Fallback
+            input.select();
+            document.execCommand('copy');
+            showToast('Stream key copied to clipboard!', 'success');
+        });
+    } else {
+        showToast('No stream key to copy!', 'error');
+    }
+}
+
+function showStreamKeyHelp() {
+    const platformNames = {
+        'twitch': 'Twitch',
+        'youtube': 'YouTube',
+        'tiktok': 'TikTok',
+        'facebook': 'Facebook'
+    };
+    
+    const platform = state.platform;
+    const name = platformNames[platform] || 'Your';
+    
+    showModal('🔑 How to Get Your Stream Key', `
+        <p><strong>For ${name}:</strong></p>
+        <ol style="color: #ccc; line-height: 2; margin-left: 20px;">
+            <li>Log in to your ${name} account</li>
+            <li>Go to your <strong>Dashboard</strong> or <strong>Creator Studio</strong></li>
+            <li>Find <strong>Stream Settings</strong> or <strong>Stream Key</strong></li>
+            <li>Copy your stream key</li>
+            <li>Paste it into the <strong>Stream Key</strong> field above</li>
+        </ol>
+        <br>
+        <p><strong>⚠️ Important:</strong> Never share your stream key with anyone!</p>
+        <p style="color: #666; font-size: 0.9rem;">Your stream key is like a password for your stream.</p>
+    `);
+}
+
+// ============================================
 // UI UPDATES
 // ============================================
 
@@ -803,11 +759,17 @@ function loadSettings() {
             if (parsed.streamKey) {
                 document.getElementById('streamKey').value = parsed.streamKey;
             }
+            if (parsed.rtmpServer) {
+                document.getElementById('rtmpServer').value = parsed.rtmpServer;
+            }
             if (parsed.streamTitle) {
                 document.getElementById('streamTitle').value = parsed.streamTitle;
             }
             if (parsed.streamCategory) {
                 document.getElementById('streamCategory').value = parsed.streamCategory;
+            }
+            if (parsed.streamTags) {
+                document.getElementById('streamTags').value = parsed.streamTags;
             }
             if (parsed.resolution) {
                 document.getElementById('videoResolution').value = parsed.resolution;
@@ -825,6 +787,9 @@ function loadSettings() {
                 document.getElementById('audioVolume').value = parsed.volume;
                 document.getElementById('volumeLabel').textContent = parsed.volume + '%';
             }
+            if (parsed.micEnabled !== undefined) {
+                document.getElementById('micEnabled').checked = parsed.micEnabled;
+            }
             if (parsed.encoder) {
                 document.getElementById('encoder').value = parsed.encoder;
             }
@@ -837,6 +802,9 @@ function loadSettings() {
             if (parsed.hardwareEncoding !== undefined) {
                 document.getElementById('hardwareEncoding').checked = parsed.hardwareEncoding;
             }
+            if (parsed.autoReconnect !== undefined) {
+                document.getElementById('autoReconnect').checked = parsed.autoReconnect;
+            }
         } catch (e) {
             console.error('Error loading settings:', e);
         }
@@ -847,20 +815,34 @@ function saveSettings() {
     const settings = {
         platform: state.platform,
         streamKey: document.getElementById('streamKey').value,
+        rtmpServer: document.getElementById('rtmpServer').value,
         streamTitle: document.getElementById('streamTitle').value,
         streamCategory: document.getElementById('streamCategory').value,
+        streamTags: document.getElementById('streamTags').value,
         resolution: document.getElementById('videoResolution').value,
         fps: parseInt(document.getElementById('videoFPS').value),
         bitrate: parseInt(document.getElementById('videoBitrate').value),
         audioBitrate: parseInt(document.getElementById('audioBitrate').value),
         volume: parseInt(document.getElementById('audioVolume').value),
+        micEnabled: document.getElementById('micEnabled').checked,
         encoder: document.getElementById('encoder').value,
         keyframeInterval: parseInt(document.getElementById('keyframeInterval').value),
         lowLatency: document.getElementById('lowLatency').checked,
-        hardwareEncoding: document.getElementById('hardwareEncoding').checked
+        hardwareEncoding: document.getElementById('hardwareEncoding').checked,
+        autoReconnect: document.getElementById('autoReconnect').checked
     };
     
     localStorage.setItem('obs_settings', JSON.stringify(settings));
+    
+    // Update stream key status
+    if (settings.streamKey) {
+        const maskedKey = settings.streamKey.length > 8 ? 
+            settings.streamKey.substring(0, 4) + '••••' + settings.streamKey.substring(settings.streamKey.length - 4) : 
+            '••••••••';
+        streamKeyStatus.textContent = `Set (${maskedKey})`;
+        streamKeyStatus.style.color = '#51cf66';
+    }
+    
     showToast('Settings saved!', 'success');
     closeSettings();
 }
@@ -898,23 +880,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Hotkey recording
-    document.querySelectorAll('.hotkey-input').forEach(input => {
-        input.addEventListener('focus', function() {
-            state.currentHotkeyInput = this;
-            this.value = 'Press keys...';
-            this.classList.add('recording');
-        });
-        
-        input.addEventListener('blur', function() {
-            if (this.value === 'Press keys...') {
-                this.value = '';
-            }
-            this.classList.remove('recording');
-            state.currentHotkeyInput = null;
-        });
-    });
-    
     // Settings button
     settingsBtn.addEventListener('click', openSettings);
     
@@ -924,34 +889,9 @@ document.addEventListener('DOMContentLoaded', function() {
             closeSettings();
         }
     });
-});
-
-// ============================================
-// KEYBOARD HOTKEY RECORDING
-// ============================================
-
-document.addEventListener('keydown', function(e) {
-    // Don't trigger hotkeys if typing in inputs
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
-        return;
-    }
     
-    // Hotkey recording mode
-    if (state.currentHotkeyInput) {
-        e.preventDefault();
-        const keys = [];
-        if (e.ctrlKey) keys.push('Ctrl');
-        if (e.shiftKey) keys.push('Shift');
-        if (e.altKey) keys.push('Alt');
-        keys.push(e.key);
-        const hotkeyStr = keys.join('+');
-        state.currentHotkeyInput.value = hotkeyStr;
-        state.hotkeys[state.currentHotkeyInput.id] = hotkeyStr;
-        state.currentHotkeyInput.classList.remove('recording');
-        state.currentHotkeyInput.blur();
-        saveHotkeys();
-        return;
-    }
+    // Load settings on startup
+    loadSettings();
 });
 
 // ============================================
@@ -959,18 +899,23 @@ document.addEventListener('keydown', function(e) {
 // ============================================
 
 function showHelp() {
-    showModal('📖 Help & Hotkeys', `
-        <p><strong>Default Hotkeys:</strong></p>
-        <p>Ctrl+Shift+S - Start/Stop Stream</p>
-        <p>Ctrl+Shift+R - Start/Stop Recording</p>
-        <p>Ctrl+Shift+P - Screenshot</p>
-        <p>Ctrl+1/2/3 - Switch Sources</p>
-        <p>Ctrl+Shift+O - Toggle Overlays</p>
-        <p>Alt+1/2/3/4 - Scene Presets</p>
+    showModal('📖 Help Guide', `
+        <p><strong>Quick Start:</strong></p>
+        <ol style="color: #ccc; line-height: 2; margin-left: 20px;">
+            <li>Click the <strong>Settings</strong> gear icon (⚙️)</li>
+            <li>Select your <strong>Platform</strong> (Twitch, YouTube, etc.)</li>
+            <li>Enter your <strong>Stream Key</strong> (get from your platform)</li>
+            <li>Click <strong>Start Streaming</strong></li>
+            <li>Add overlays and effects as needed</li>
+        </ol>
         <br>
-        <p><strong>Customize:</strong></p>
-        <p>Click the Settings gear icon (⚙️) to set your own hotkeys!</p>
-        <p>Connect to Twitch, YouTube, TikTok, and more!</p>
+        <p><strong>Features:</strong></p>
+        <p>🎥 Camera, Screen, or Window capture</p>
+        <p>📝 Text, Image, and Frame overlays</p>
+        <p>🎬 Recording and Screenshots</p>
+        <p>🎨 Preset layouts</p>
+        <p>📊 Live stats (FPS, Bitrate, Uptime)</p>
+        <p>🔑 Multiple platform support</p>
     `);
 }
 
@@ -981,7 +926,7 @@ function showAbout() {
         <p><strong>Features:</strong></p>
         <p>• Webcam & Screen Capture</p>
         <p>• Multi-platform streaming (Twitch, YouTube, TikTok, Facebook)</p>
-        <p>• Custom hotkey system (OBS-style)</p>
+        <p>• Stream Key support</p>
         <p>• Text & Image Overlays</p>
         <p>• Recording & Screenshots</p>
         <p>• Preset Layouts</p>
@@ -1052,15 +997,12 @@ document.querySelectorAll('.preset-btn').forEach(btn => {
 // ============================================
 
 function init() {
-    loadHotkeys();
-    registerHotkeys();
     loadSettings();
     
     console.log('🎥 Web OBS Studio v2.0 loaded!');
-    console.log('📖 Press Ctrl+Shift+S to start/stop streaming');
-    console.log('⌨️ Click Settings (⚙️) to customize hotkeys');
-    console.log('🎬 Ctrl+Shift+R to record');
-    console.log('📸 Ctrl+Shift+P for screenshot');
+    console.log('📖 Click the Settings gear (⚙️) to set up your stream');
+    console.log('🔑 Enter your stream key to connect to platforms');
+    console.log('🎬 Start streaming to your favorite platform!');
     showToast('🎥 Web OBS Studio loaded!', 'success');
 }
 
