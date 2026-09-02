@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web OBS Studio</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎥</text></svg>">
+</head>
+<body>
+    <!-- ===== TOP NAVIGATION ===== -->
+    <header class="header">
+        <div class="logo">
+            <i class="fas fa-video"></i>
+            <span>Web OBS Studio</span>
+        </div>
+        <div class="status-bar">
+            <span id="statusIndicator" class="status-offline">
+                <i class="fas fa-circle"></i> Offline
+            </span>
+            <div class="controls">
+                <button id="startBtn" class="btn btn-success">
+                    <i class="fas fa-play"></i> Start
+                </button>
+                <button id="stopBtn" class="btn btn-danger" disabled>
+                    <i class="fas fa-stop"></i> Stop
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== MAIN LAYOUT ===== -->
+    <main class="main-layout">
+        <!-- Left: Video Preview -->
+        <section class="preview-section">
+            <div class="preview-container">
+                <video id="previewVideo" autoplay playsinline muted></video>
+                <div class="overlay-container" id="overlayContainer">
+                    <!-- Dynamic overlays will be added here -->
+                </div>
+                <div class="preview-controls">
+                    <span id="fpsCounter">FPS: 30</span>
+                    <span id="resolutionDisplay">Resolution: 1280x720</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right: Controls Panel -->
+        <section class="controls-section">
+            <!-- Source Selector -->
+            <div class="panel">
+                <h3><i class="fas fa-source"></i> Sources</h3>
+                <div class="source-list" id="sourceList">
+                    <button class="source-btn active" data-source="camera">
+                        <i class="fas fa-camera"></i> Camera
+                    </button>
+                    <button class="source-btn" data-source="screen">
+                        <i class="fas fa-desktop"></i> Screen
+                    </button>
+                    <button class="source-btn" data-source="window">
+                        <i class="fas fa-window-maximize"></i> Window
+                    </button>
+                </div>
+            </div>
+
+            <!-- Overlay Controls -->
+            <div class="panel">
+                <h3><i class="fas fa-layer-group"></i> Overlays</h3>
+                <div class="overlay-controls">
+                    <button class="overlay-btn" data-overlay="text">
+                        <i class="fas fa-font"></i> Text
+                    </button>
+                    <button class="overlay-btn" data-overlay="image">
+                        <i class="fas fa-image"></i> Image
+                    </button>
+                    <button class="overlay-btn" data-overlay="frame">
+                        <i class="fas fa-border-all"></i> Frame
+                    </button>
+                    <button class="overlay-btn" data-overlay="clear">
+                        <i class="fas fa-trash"></i> Clear All
+                    </button>
+                </div>
+            </div>
+
+            <!-- Hotkey Settings -->
+            <div class="panel">
+                <h3><i class="fas fa-keyboard"></i> Hotkeys</h3>
+                <div class="hotkey-grid">
+                    <div class="hotkey-item">
+                        <span>Start/Stop</span>
+                        <kbd>Ctrl + Shift + S</kbd>
+                    </div>
+                    <div class="hotkey-item">
+                        <span>Camera</span>
+                        <kbd>Ctrl + 1</kbd>
+                    </div>
+                    <div class="hotkey-item">
+                        <span>Screen</span>
+                        <kbd>Ctrl + 2</kbd>
+                    </div>
+                    <div class="hotkey-item">
+                        <span>Window</span>
+                        <kbd>Ctrl + 3</kbd>
+                    </div>
+                    <div class="hotkey-item">
+                        <span>Screenshot</span>
+                        <kbd>Ctrl + Shift + P</kbd>
+                    </div>
+                    <div class="hotkey-item">
+                        <span>Record</span>
+                        <kbd>Ctrl + R</kbd>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recording Controls -->
+            <div class="panel">
+                <h3><i class="fas fa-record-vinyl"></i> Recording</h3>
+                <div class="recording-controls">
+                    <button id="recordBtn" class="btn btn-record">
+                        <i class="fas fa-circle"></i> Record
+                    </button>
+                    <button id="screenshotBtn" class="btn btn-screenshot">
+                        <i class="fas fa-camera"></i> Screenshot
+                    </button>
+                    <div class="recording-status" id="recordingStatus">
+                        <span class="recording-dot"></span>
+                        <span id="recordTime">00:00:00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Presets -->
+            <div class="panel">
+                <h3><i class="fas fa-preset"></i> Presets</h3>
+                <div class="preset-grid">
+                    <button class="preset-btn" data-preset="default">
+                        <i class="fas fa-camera"></i> Default
+                    </button>
+                    <button class="preset-btn" data-preset="fullscreen">
+                        <i class="fas fa-expand"></i> Fullscreen
+                    </button>
+                    <button class="preset-btn" data-preset="split">
+                        <i class="fas fa-columns"></i> Split
+                    </button>
+                    <button class="preset-btn" data-preset="overlay">
+                        <i class="fas fa-layer-group"></i> Overlay
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ===== FOOTER ===== -->
+    <footer class="footer">
+        <p>&copy; 2026 Web OBS Studio · Made with <i class="fas fa-heart" style="color: #ff6b6b;"></i></p>
+        <div class="footer-links">
+            <a href="#" onclick="showHelp()"><i class="fas fa-question-circle"></i> Help</a>
+            <a href="#" onclick="showAbout()"><i class="fas fa-info-circle"></i> About</a>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
