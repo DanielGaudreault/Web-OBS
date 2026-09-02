@@ -1,38 +1,36 @@
-# 🎥 Web OBS Studio
+# 🎥 Web OBS Studio - Stream Key Edition
 
-A complete web-based OBS alternative that runs in your browser!
+A complete web-based OBS alternative with stream key support for multiple platforms!
 
 ## ✨ Features
 
-- ✅ **Webcam Capture** - Use your camera directly in the browser
-- ✅ **Screen Sharing** - Share your entire screen or specific windows
-- ✅ **Real-time Preview** - See your stream before going live
-- ✅ **Overlay System** - Add text, images, and frames
-- ✅ **Recording** - Record your stream locally
+- ✅ **Multi-Platform Streaming** - Twitch, YouTube, TikTok, Facebook, Custom RTMP
+- ✅ **Stream Key Support** - Enter your stream key to connect
+- ✅ **Webcam & Screen Capture** - Multiple source options
+- ✅ **Overlay System** - Text, images, and frames
+- ✅ **Recording** - Local recording with WebM format
 - ✅ **Screenshots** - Capture still images
-- ✅ **Hotkey Support** - Keyboard shortcuts for everything
 - ✅ **Preset Layouts** - One-click scene setups
-- ✅ **Drag & Drop** - Move overlays around
-- ✅ **FPS Monitor** - See your stream performance
+- ✅ **FPS & Bitrate Monitor** - Real-time performance stats
+- ✅ **Settings Panel** - Full configuration interface
 - ✅ **PWA Ready** - Install as a desktop app
-
-## ⌨️ Hotkeys
-
-| Hotkey | Action |
-|--------|--------|
-| `Ctrl + Shift + S` | Start/Stop Stream |
-| `Ctrl + 1` | Camera Source |
-| `Ctrl + 2` | Screen Source |
-| `Ctrl + 3` | Window Source |
-| `Ctrl + R` | Start/Stop Recording |
-| `Ctrl + Shift + P` | Take Screenshot |
 
 ## 🚀 Quick Start
 
 1. **Open** `index.html` in your browser
-2. **Click** "Start" to begin streaming
-3. **Add** overlays, effects, or switch sources
-4. **Record** your stream or take screenshots
-5. **Download** recordings when done
+2. **Click** the Settings gear (⚙️)
+3. **Select** your platform (Twitch, YouTube, TikTok, etc.)
+4. **Enter** your stream key (get from your platform's dashboard)
+5. **Click** "Start Streaming"
+6. **Add** overlays, effects, or switch sources
+
+## 🔑 Getting Your Stream Key
+
+| Platform | Where to Find |
+|----------|---------------|
+| **Twitch** | Dashboard → Stream Settings → Stream Key |
+| **YouTube** | YouTube Studio → Go Live → Stream Settings |
+| **TikTok** | Live Studio → Stream Settings → Stream Key |
+| **Facebook** | Creator Studio → Live → Stream Settings |
 
 ## 📁 Files
