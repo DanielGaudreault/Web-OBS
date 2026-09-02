@@ -1,5 +1,5 @@
 // ============================================
-// WEB OBS STUDIO - STREAM KEY EDITION (FIXED)
+// BROWSER STREAMER - COMPLETE SCRIPT
 // ============================================
 
 // ===== STATE =====
@@ -15,16 +15,16 @@ const state = {
     overlays: [],
     overlayIdCounter: 0,
     canvas: null,
-    canvasStream: null,
     animationFrame: null,
     platform: 'twitch',
     streamKey: '',
-    streamTitle: '',
-    streamCategory: '',
+    streamKeyVisible: false,
     streamUptime: 0,
     uptimeTimer: null,
-    streamKeyVisible: false,
-    streamKeyValid: false
+    videoDevices: [],
+    audioDevices: [],
+    selectedCamera: '',
+    selectedMic: ''
 };
 
 // ===== DOM ELEMENTS =====
@@ -41,244 +41,94 @@ const bitrateDisplay = document.getElementById('bitrateDisplay');
 const overlayContainer = document.getElementById('overlayContainer');
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsModal = document.getElementById('settingsModal');
-const streamPlatform = document.getElementById('streamPlatform');
 const streamStatus = document.getElementById('streamStatus');
 const streamUptime = document.getElementById('streamUptime');
-const streamKeyStatus = document.getElementById('streamKeyStatus');
+const deviceInfo = document.getElementById('deviceInfo');
+const cameraSelect = document.getElementById('cameraSelect');
+const micSelect = document.getElementById('micSelect');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const recordingIndicator = document.getElementById('recordingIndicator');
 
 // ============================================
-// STREAM KEY VALIDATION
+// DEVICE MANAGEMENT
 // ============================================
 
-function validateStreamKey(key, platform) {
-    if (!key || key.length < 8) {
-        return { valid: false, message: 'Stream key is too short (min 8 characters)' };
-    }
-
-    // Different platforms have different key formats
-    const platformPatterns = {
-        'twitch': /^[a-zA-Z0-9_-]{30,40}$/,
-        'youtube': /^[a-zA-Z0-9_-]{20,40}$/,
-        'tiktok': /^[a-zA-Z0-9_-]{20,40}$/,
-        'facebook': /^[a-zA-Z0-9_-]{20,40}$/,
-        'custom': /^.{8,}$/
-    };
-
-    const pattern = platformPatterns[platform] || platformPatterns['custom'];
-    
-    if (pattern.test(key)) {
-        return { valid: true, message: 'Valid stream key format' };
-    } else {
-        return { valid: false, message: 'Invalid stream key format for this platform' };
-    }
-}
-
-function testStreamKey() {
-    const key = document.getElementById('streamKey')?.value || '';
-    const platform = state.platform;
-    
-    const result = validateStreamKey(key, platform);
-    state.streamKeyValid = result.valid;
-    
-    // Update UI
-    const statusEl = document.getElementById('keyValidationStatus');
-    if (statusEl) {
-        statusEl.textContent = result.message;
-        statusEl.style.color = result.valid ? '#51cf66' : '#ff6b6b';
-        statusEl.style.display = 'block';
-    }
-    
-    if (result.valid) {
-        showToast('✅ Stream key looks valid!', 'success');
-    } else {
-        showToast('⚠️ ' + result.message, 'error');
-    }
-    
-    return result.valid;
-}
-
-// ============================================
-// STREAM KEY HELPERS
-// ============================================
-
-function toggleStreamKeyVisibility() {
-    const input = document.getElementById('streamKey');
-    state.streamKeyVisible = !state.streamKeyVisible;
-    input.type = state.streamKeyVisible ? 'text' : 'password';
-    const btn = document.querySelector('.stream-key-help .btn:first-child');
-    if (btn) {
-        btn.innerHTML = state.streamKeyVisible ? '<i class="fas fa-eye-slash"></i> Hide' : '<i class="fas fa-eye"></i> Show';
-    }
-}
-
-function copyStreamKey() {
-    const input = document.getElementById('streamKey');
-    if (input.value) {
-        navigator.clipboard.writeText(input.value).then(() => {
-            showToast('📋 Stream key copied to clipboard!', 'success');
-        }).catch(() => {
-            // Fallback
-            input.select();
-            document.execCommand('copy');
-            showToast('📋 Stream key copied to clipboard!', 'success');
+async function getDevices() {
+    try {
+        // Request permissions first
+        await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        
+        state.videoDevices = devices.filter(d => d.kind === 'videoinput');
+        state.audioDevices = devices.filter(d => d.kind === 'audioinput');
+        
+        // Populate camera select
+        cameraSelect.innerHTML = '<option value="">Select Camera...</option>';
+        state.videoDevices.forEach(device => {
+            const option = document.createElement('option');
+            option.value = device.deviceId;
+            option.textContent = device.label || `Camera ${state.videoDevices.indexOf(device) + 1}`;
+            cameraSelect.appendChild(option);
         });
-    } else {
-        showToast('No stream key to copy!', 'error');
-    }
-}
-
-function getPlatformStreamKeyGuide() {
-    const guides = {
-        'twitch': {
-            name: 'Twitch',
-            steps: [
-                'Go to your Twitch Dashboard',
-                'Click on "Stream" in the left menu',
-                'Find "Stream Key" under "Stream Settings"',
-                'Copy the key and paste it here'
-            ],
-            url: 'https://www.twitch.tv/settings/stream'
-        },
-        'youtube': {
-            name: 'YouTube',
-            steps: [
-                'Go to YouTube Studio',
-                'Click "Go Live" in the top right',
-                'Select "Stream" from the left menu',
-                'Copy the "Stream Key" from the stream settings'
-            ],
-            url: 'https://studio.youtube.com/channel/'
-        },
-        'tiktok': {
-            name: 'TikTok',
-            steps: [
-                'Open TikTok Live Studio',
-                'Go to "Settings"',
-                'Find "Stream Key" under "Connection"',
-                'Copy the key and paste it here'
-            ],
-            url: 'https://www.tiktok.com/live'
-        },
-        'facebook': {
-            name: 'Facebook',
-            steps: [
-                'Go to Facebook Creator Studio',
-                'Click "Live" in the left menu',
-                'Select "Stream Settings"',
-                'Copy the "Stream Key"'
-            ],
-            url: 'https://www.facebook.com/live/producer'
+        
+        // Populate mic select
+        micSelect.innerHTML = '<option value="">Select Microphone...</option>';
+        state.audioDevices.forEach(device => {
+            const option = document.createElement('option');
+            option.value = device.deviceId;
+            option.textContent = device.label || `Microphone ${state.audioDevices.indexOf(device) + 1}`;
+            micSelect.appendChild(option);
+        });
+        
+        // Auto-select first devices
+        if (state.videoDevices.length > 0) {
+            cameraSelect.value = state.videoDevices[0].deviceId;
+            state.selectedCamera = state.videoDevices[0].deviceId;
         }
-    };
-    
-    return guides[state.platform] || guides['twitch'];
+        if (state.audioDevices.length > 0) {
+            micSelect.value = state.audioDevices[0].deviceId;
+            state.selectedMic = state.audioDevices[0].deviceId;
+        }
+        
+        console.log('📷 Cameras:', state.videoDevices.length);
+        console.log('🎤 Microphones:', state.audioDevices.length);
+        
+    } catch (error) {
+        console.error('Error getting devices:', error);
+        showToast('Please allow camera and microphone access', 'error');
+    }
 }
 
-function showStreamKeyHelp() {
-    const guide = getPlatformStreamKeyGuide();
-    
-    let stepsHtml = guide.steps.map((step, i) => 
-        `<li style="color: #ccc; line-height: 1.8;">${i+1}. ${step}</li>`
-    ).join('');
-    
-    showModal('🔑 How to Get Your Stream Key', `
-        <p><strong>For ${guide.name}:</strong></p>
-        <ol style="color: #ccc; line-height: 2; margin-left: 20px; margin-bottom: 16px;">
-            ${stepsHtml}
-        </ol>
-        <div style="background: rgba(233,69,96,0.1); padding: 12px 16px; border-radius: 8px; border-left: 3px solid #e94560; margin-bottom: 16px;">
-            <p style="color: #ff6b6b; margin: 0;"><strong>⚠️ Important:</strong> Never share your stream key with anyone!</p>
-            <p style="color: #888; margin: 4px 0 0 0; font-size: 0.85rem;">Your stream key is like a password for your stream.</p>
-        </div>
-        <div style="display: flex; gap: 10px;">
-            <button class="btn btn-secondary" onclick="window.open('${guide.url}', '_blank')" style="flex: 1; justify-content: center;">
-                <i class="fas fa-external-link-alt"></i> Open ${guide.name}
-            </button>
-            <button class="btn btn-success" onclick="closeModal(); setTimeout(() => document.getElementById('streamKey').focus(), 300);" style="flex: 1; justify-content: center;">
-                <i class="fas fa-paste"></i> Enter Key
-            </button>
-        </div>
-    `);
-}
+// Device selection change
+cameraSelect.addEventListener('change', function() {
+    state.selectedCamera = this.value;
+    if (state.isStreaming) {
+        restartStream();
+    }
+});
 
-// Close modal helper
-function closeModal() {
-    const modal = document.querySelector('.modal-overlay.show');
-    if (modal) {
-        modal.remove();
+micSelect.addEventListener('change', function() {
+    state.selectedMic = this.value;
+    if (state.isStreaming) {
+        restartStream();
+    }
+});
+
+async function restartStream() {
+    if (state.isStreaming) {
+        stopStream();
+        setTimeout(startStream, 500);
     }
 }
 
 // ============================================
-// STREAMING PLATFORM CONNECTION
-// ============================================
-
-function connectToPlatform() {
-    const platform = state.platform;
-    const streamKey = document.getElementById('streamKey')?.value || '';
-    
-    // Validate stream key
-    if (!streamKey) {
-        showToast('Please enter your stream key in Settings!', 'error');
-        return false;
-    }
-    
-    const validation = validateStreamKey(streamKey, platform);
-    if (!validation.valid) {
-        showToast('⚠️ ' + validation.message, 'error');
-        return false;
-    }
-    
-    const platformNames = {
-        'twitch': 'Twitch',
-        'youtube': 'YouTube',
-        'tiktok': 'TikTok',
-        'facebook': 'Facebook',
-        'custom': 'Custom RTMP'
-    };
-    
-    const platformColors = {
-        'twitch': '#9146FF',
-        'youtube': '#FF0000',
-        'tiktok': '#00F2EA',
-        'facebook': '#1877F2',
-        'custom': '#4a6fa5'
-    };
-    
-    streamPlatform.textContent = platformNames[platform] || 'Connected';
-    streamPlatform.style.color = platformColors[platform] || '#51cf66';
-    streamStatus.textContent = 'Live (Simulated)';
-    streamStatus.style.color = '#51cf66';
-    
-    // Show stream key status
-    if (streamKey) {
-        const maskedKey = streamKey.length > 8 ? 
-            streamKey.substring(0, 4) + '••••' + streamKey.substring(streamKey.length - 4) : 
-            '••••••••';
-        streamKeyStatus.textContent = `Set ✓ (${maskedKey})`;
-        streamKeyStatus.style.color = '#51cf66';
-    }
-    
-    showToast(`✅ Connected to ${platformNames[platform]}!`, 'success');
-    return true;
-}
-
-function disconnectFromPlatform() {
-    streamPlatform.textContent = 'Not Connected';
-    streamPlatform.style.color = '#aaa';
-    streamStatus.textContent = 'Offline';
-    streamStatus.style.color = '#ff6b6b';
-    streamKeyStatus.textContent = 'Not Set';
-    streamKeyStatus.style.color = '#ff6b6b';
-}
-
-// ============================================
-// VIDEO CAPTURE
+// STREAMING
 // ============================================
 
 async function startStream() {
     try {
-        // Check if stream key is set and valid
+        // Check stream key
         const streamKey = document.getElementById('streamKey')?.value;
         if (!streamKey) {
             showToast('Please set your stream key in Settings!', 'error');
@@ -286,31 +136,34 @@ async function startStream() {
             return;
         }
         
-        const validation = validateStreamKey(streamKey, state.platform);
-        if (!validation.valid) {
-            showToast('⚠️ ' + validation.message, 'error');
-            settingsModal.classList.add('show');
-            return;
-        }
-        
-        let stream;
-        let constraints = { video: true, audio: true };
-
-        // Get resolution from settings
+        // Get resolution
         const resolution = document.getElementById('videoResolution')?.value || '1280x720';
         const [width, height] = resolution.split('x').map(Number);
         const fps = parseInt(document.getElementById('videoFPS')?.value || 30);
-
+        
+        // Build constraints
+        const constraints = {
+            video: {
+                width: { ideal: width },
+                height: { ideal: height },
+                frameRate: { ideal: fps }
+            },
+            audio: true
+        };
+        
+        // Add specific devices if selected
+        if (state.selectedCamera) {
+            constraints.video.deviceId = { exact: state.selectedCamera };
+        }
+        if (state.selectedMic) {
+            constraints.audio.deviceId = { exact: state.selectedMic };
+        }
+        
+        // Get media stream
+        let stream;
+        
         switch (state.currentSource) {
             case 'camera':
-                constraints = {
-                    video: { 
-                        facingMode: 'user', 
-                        width: { ideal: width },
-                        height: { ideal: height }
-                    },
-                    audio: true
-                };
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
                 break;
             case 'screen':
@@ -326,28 +179,30 @@ async function startStream() {
                 });
                 break;
         }
-
+        
         state.mediaStream = stream;
         previewVideo.srcObject = stream;
         await previewVideo.play();
-
-        state.isStreaming = true;
-        connectToPlatform();
-        updateUI();
-        showToast('🎥 Stream started successfully!', 'success');
         
-        // Start FPS counter
+        state.isStreaming = true;
+        updateUI();
+        showToast('🎥 Stream started!', 'success');
+        
+        // Start monitors
         startFPSMonitor();
         startUptimeTracker();
-
-        // Start overlay rendering
         startOverlayRendering();
-
-        return stream;
+        
+        // Update device info
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+            const settings = videoTrack.getSettings();
+            deviceInfo.textContent = `${state.currentSource} - ${settings.width}x${settings.height}`;
+        }
+        
     } catch (error) {
         console.error('Error starting stream:', error);
         showToast('Error: ' + error.message, 'error');
-        throw error;
     }
 }
 
@@ -371,8 +226,7 @@ function stopStream() {
         }
         state.streamUptime = 0;
         streamUptime.textContent = '00:00:00';
-
-        disconnectFromPlatform();
+        
         updateUI();
         showToast('⏹️ Stream stopped', 'success');
         
@@ -388,18 +242,6 @@ function toggleStream() {
         stopStream();
     } else {
         startStream();
-    }
-}
-
-function switchSource(source) {
-    state.currentSource = source;
-    document.querySelectorAll('.source-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.source === source);
-    });
-    showToast(`Switched to ${source}`, 'success');
-    if (state.isStreaming) {
-        stopStream();
-        setTimeout(startStream, 500);
     }
 }
 
@@ -664,7 +506,7 @@ function startFPSMonitor() {
         if (now - lastFpsUpdate >= 1000) {
             fpsCounter.textContent = `FPS: ${frameCount}`;
             
-            // Simulate bitrate (for demo purposes)
+            // Simulate bitrate
             const bitrate = 3000 + Math.random() * 2000;
             bitrateHistory.push(bitrate);
             if (bitrateHistory.length > 10) bitrateHistory.shift();
@@ -754,6 +596,9 @@ function startRecording() {
             URL.revokeObjectURL(url);
             state.recordedChunks = [];
             showToast('Recording saved!', 'success');
+            
+            // Update indicator
+            recordingIndicator.style.display = 'none';
         };
 
         state.recorder.start();
@@ -762,6 +607,7 @@ function startRecording() {
         recordBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Recording';
         recordBtn.classList.add('recording');
         document.querySelector('.recording-dot').classList.add('active');
+        recordingIndicator.style.display = 'inline';
         startRecordTimer();
         showToast('Recording started!', 'success');
         updateUI();
@@ -778,6 +624,7 @@ function stopRecording() {
         recordBtn.innerHTML = '<i class="fas fa-circle"></i> Record';
         recordBtn.classList.remove('recording');
         document.querySelector('.recording-dot').classList.remove('active');
+        recordingIndicator.style.display = 'none';
         clearInterval(state.recordTimer);
         recordTime.textContent = '00:00:00';
         updateUI();
@@ -819,6 +666,129 @@ function takeScreenshot() {
 }
 
 // ============================================
+// STREAM KEY HELPERS
+// ============================================
+
+function toggleStreamKeyVisibility() {
+    const input = document.getElementById('streamKey');
+    state.streamKeyVisible = !state.streamKeyVisible;
+    input.type = state.streamKeyVisible ? 'text' : 'password';
+    const btn = document.querySelector('.stream-key-help .btn:first-child');
+    if (btn) {
+        btn.innerHTML = state.streamKeyVisible ? '<i class="fas fa-eye-slash"></i> Hide' : '<i class="fas fa-eye"></i> Show';
+    }
+}
+
+function copyStreamKey() {
+    const input = document.getElementById('streamKey');
+    if (input.value) {
+        navigator.clipboard.writeText(input.value).then(() => {
+            showToast('📋 Stream key copied!', 'success');
+        }).catch(() => {
+            input.select();
+            document.execCommand('copy');
+            showToast('📋 Stream key copied!', 'success');
+        });
+    } else {
+        showToast('No stream key to copy!', 'error');
+    }
+}
+
+function testStreamKey() {
+    const key = document.getElementById('streamKey')?.value || '';
+    const statusEl = document.getElementById('keyValidationStatus');
+    
+    if (key.length < 8) {
+        statusEl.textContent = '⚠️ Key is too short (min 8 characters)';
+        statusEl.style.color = '#ff6b6b';
+        statusEl.style.display = 'block';
+        showToast('❌ Invalid stream key format', 'error');
+        return;
+    }
+    
+    // Check for common patterns
+    const validPatterns = [
+        /^[a-zA-Z0-9_-]{8,40}$/,
+        /^live_[a-zA-Z0-9_-]+$/,
+        /^[a-zA-Z0-9]{10,}$/
+    ];
+    
+    const isValid = validPatterns.some(pattern => pattern.test(key));
+    
+    if (isValid) {
+        statusEl.textContent = '✅ Valid stream key format!';
+        statusEl.style.color = '#51cf66';
+        statusEl.style.display = 'block';
+        showToast('✅ Stream key looks valid!', 'success');
+    } else {
+        statusEl.textContent = '⚠️ Unknown format - please check your key';
+        statusEl.style.color = '#ffd93d';
+        statusEl.style.display = 'block';
+        showToast('⚠️ Unknown key format, but it may still work', 'info');
+    }
+}
+
+function showStreamKeyHelp() {
+    const guides = {
+        'twitch': {
+            name: 'Twitch',
+            steps: [
+                'Go to your Twitch Dashboard',
+                'Click "Stream" in the left menu',
+                'Find "Stream Key" under settings',
+                'Copy the key and paste it here'
+            ],
+            url: 'https://www.twitch.tv/settings/stream'
+        },
+        'youtube': {
+            name: 'YouTube',
+            steps: [
+                'Go to YouTube Studio',
+                'Click "Go Live" → "Stream"',
+                'Find your Stream Key',
+                'Copy and paste it here'
+            ],
+            url: 'https://studio.youtube.com/'
+        },
+        'tiktok': {
+            name: 'TikTok',
+            steps: [
+                'Open TikTok Live Studio',
+                'Go to Settings → Connection',
+                'Find your Stream Key',
+                'Copy and paste it here'
+            ],
+            url: 'https://www.tiktok.com/live'
+        },
+        'facebook': {
+            name: 'Facebook',
+            steps: [
+                'Go to Facebook Live Producer',
+                'Find Stream Settings',
+                'Copy your Stream Key',
+                'Paste it here'
+            ],
+            url: 'https://www.facebook.com/live/producer'
+        }
+    };
+    
+    const guide = guides[state.platform] || guides['twitch'];
+    
+    showModal('🔑 How to Get Your Stream Key', `
+        <p><strong>For ${guide.name}:</strong></p>
+        <ol style="color: #ccc; line-height: 2; margin-left: 20px;">
+            ${guide.steps.map((s, i) => `<li>${i+1}. ${s}</li>`).join('')}
+        </ol>
+        <div style="background: rgba(233,69,96,0.1); padding: 12px 16px; border-radius: 8px; border-left: 3px solid #e94560; margin: 16px 0;">
+            <p style="color: #ff6b6b; margin: 0;"><strong>⚠️ Important:</strong> Never share your stream key!</p>
+        </div>
+        <button class="btn btn-primary" onclick="window.open('${guide.url}', '_blank')" style="width: 100%; justify-content: center;">
+            <i class="fas fa-external-link-alt"></i> Open ${guide.name}
+        </button>
+    `);
+}
+
+// ============================================
 // UI UPDATES
 // ============================================
 
@@ -830,10 +800,14 @@ function updateUI() {
         statusIndicator.className = 'status-online';
         statusIndicator.innerHTML = '<i class="fas fa-circle"></i> Live';
         startBtn.innerHTML = '<i class="fas fa-play"></i> Streaming';
+        streamStatus.textContent = 'Live';
+        streamStatus.style.color = '#51cf66';
     } else {
         statusIndicator.className = 'status-offline';
         statusIndicator.innerHTML = '<i class="fas fa-circle"></i> Offline';
-        startBtn.innerHTML = '<i class="fas fa-play"></i> Start Streaming';
+        startBtn.innerHTML = '<i class="fas fa-play"></i> Start Stream';
+        streamStatus.textContent = 'Offline';
+        streamStatus.style.color = '#ff6b6b';
     }
 }
 
@@ -843,15 +817,10 @@ function showToast(message, type = 'info') {
     toast.textContent = message;
     document.body.appendChild(toast);
     
-    setTimeout(() => {
-        toast.classList.add('show');
-    }, 100);
-    
+    setTimeout(() => toast.classList.add('show'), 100);
     setTimeout(() => {
         toast.classList.remove('show');
-        setTimeout(() => {
-            toast.remove();
-        }, 500);
+        setTimeout(() => toast.remove(), 500);
     }, 3000);
 }
 
@@ -869,8 +838,7 @@ function closeSettings() {
 }
 
 function loadSettings() {
-    // Load saved settings
-    const saved = localStorage.getItem('obs_settings');
+    const saved = localStorage.getItem('browser_streamer_settings');
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
@@ -883,51 +851,17 @@ function loadSettings() {
             if (parsed.streamKey) {
                 document.getElementById('streamKey').value = parsed.streamKey;
             }
-            if (parsed.rtmpServer) {
-                document.getElementById('rtmpServer').value = parsed.rtmpServer;
-            }
             if (parsed.streamTitle) {
                 document.getElementById('streamTitle').value = parsed.streamTitle;
             }
             if (parsed.streamCategory) {
                 document.getElementById('streamCategory').value = parsed.streamCategory;
             }
-            if (parsed.streamTags) {
-                document.getElementById('streamTags').value = parsed.streamTags;
-            }
             if (parsed.resolution) {
                 document.getElementById('videoResolution').value = parsed.resolution;
             }
             if (parsed.fps) {
                 document.getElementById('videoFPS').value = parsed.fps;
-            }
-            if (parsed.bitrate) {
-                document.getElementById('videoBitrate').value = parsed.bitrate;
-            }
-            if (parsed.audioBitrate) {
-                document.getElementById('audioBitrate').value = parsed.audioBitrate;
-            }
-            if (parsed.volume !== undefined) {
-                document.getElementById('audioVolume').value = parsed.volume;
-                document.getElementById('volumeLabel').textContent = parsed.volume + '%';
-            }
-            if (parsed.micEnabled !== undefined) {
-                document.getElementById('micEnabled').checked = parsed.micEnabled;
-            }
-            if (parsed.encoder) {
-                document.getElementById('encoder').value = parsed.encoder;
-            }
-            if (parsed.keyframeInterval) {
-                document.getElementById('keyframeInterval').value = parsed.keyframeInterval;
-            }
-            if (parsed.lowLatency !== undefined) {
-                document.getElementById('lowLatency').checked = parsed.lowLatency;
-            }
-            if (parsed.hardwareEncoding !== undefined) {
-                document.getElementById('hardwareEncoding').checked = parsed.hardwareEncoding;
-            }
-            if (parsed.autoReconnect !== undefined) {
-                document.getElementById('autoReconnect').checked = parsed.autoReconnect;
             }
         } catch (e) {
             console.error('Error loading settings:', e);
@@ -939,85 +873,84 @@ function saveSettings() {
     const settings = {
         platform: state.platform,
         streamKey: document.getElementById('streamKey').value,
-        rtmpServer: document.getElementById('rtmpServer').value,
         streamTitle: document.getElementById('streamTitle').value,
         streamCategory: document.getElementById('streamCategory').value,
-        streamTags: document.getElementById('streamTags').value,
         resolution: document.getElementById('videoResolution').value,
-        fps: parseInt(document.getElementById('videoFPS').value),
-        bitrate: parseInt(document.getElementById('videoBitrate').value),
-        audioBitrate: parseInt(document.getElementById('audioBitrate').value),
-        volume: parseInt(document.getElementById('audioVolume').value),
-        micEnabled: document.getElementById('micEnabled').checked,
-        encoder: document.getElementById('encoder').value,
-        keyframeInterval: parseInt(document.getElementById('keyframeInterval').value),
-        lowLatency: document.getElementById('lowLatency').checked,
-        hardwareEncoding: document.getElementById('hardwareEncoding').checked,
-        autoReconnect: document.getElementById('autoReconnect').checked
+        fps: parseInt(document.getElementById('videoFPS').value)
     };
     
-    localStorage.setItem('obs_settings', JSON.stringify(settings));
-    
-    // Update stream key status
-    const key = settings.streamKey;
-    if (key) {
-        const validation = validateStreamKey(key, state.platform);
-        const maskedKey = key.length > 8 ? 
-            key.substring(0, 4) + '••••' + key.substring(key.length - 4) : 
-            '••••••••';
-        streamKeyStatus.textContent = validation.valid ? `Set ✓ (${maskedKey})` : `Set ⚠️ (${maskedKey})`;
-        streamKeyStatus.style.color = validation.valid ? '#51cf66' : '#ff6b6b';
-    }
-    
+    localStorage.setItem('browser_streamer_settings', JSON.stringify(settings));
     showToast('Settings saved!', 'success');
     closeSettings();
 }
 
 // ============================================
-// SETTINGS TAB SWITCHING
+// EVENT LISTENERS
 // ============================================
 
-document.addEventListener('DOMContentLoaded', function() {
-    // Tab switching
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            this.classList.add('active');
-            document.getElementById('tab-' + this.dataset.tab).classList.add('active');
-        });
-    });
-    
-    // Platform selection
-    document.querySelectorAll('.platform-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            state.platform = this.dataset.platform;
-            showToast(`Platform set to: ${this.textContent.trim()}`, 'success');
-        });
-    });
-    
-    // Volume slider
-    const volumeSlider = document.getElementById('audioVolume');
-    if (volumeSlider) {
-        volumeSlider.addEventListener('input', function() {
-            document.getElementById('volumeLabel').textContent = this.value + '%';
-        });
-    }
-    
-    // Settings button
-    settingsBtn.addEventListener('click', openSettings);
-    
-    // Close modal on outside click
-    settingsModal.addEventListener('click', function(e) {
-        if (e.target === this) {
-            closeSettings();
+// Start/Stop
+startBtn.addEventListener('click', toggleStream);
+stopBtn.addEventListener('click', stopStream);
+
+// Recording
+recordBtn.addEventListener('click', toggleRecording);
+screenshotBtn.addEventListener('click', takeScreenshot);
+
+// Source Selection
+document.querySelectorAll('.source-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.source-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        state.currentSource = this.dataset.source;
+        showToast(`Switched to ${this.dataset.source}`, 'success');
+        if (state.isStreaming) {
+            stopStream();
+            setTimeout(startStream, 500);
         }
     });
-    
-    // Load settings on startup
-    loadSettings();
+});
+
+// Overlays
+document.querySelectorAll('.overlay-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const type = this.dataset.overlay;
+        if (type === 'clear') {
+            clearOverlays();
+        } else {
+            addOverlay(type);
+        }
+    });
+});
+
+// Presets
+document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        applyPreset(this.dataset.preset);
+    });
+});
+
+// Settings
+settingsBtn.addEventListener('click', openSettings);
+settingsModal.addEventListener('click', function(e) {
+    if (e.target === this) closeSettings();
+});
+
+// Fullscreen
+fullscreenBtn.addEventListener('click', function() {
+    const container = document.querySelector('.preview-container');
+    if (container.requestFullscreen) {
+        container.requestFullscreen();
+    }
+});
+
+// Platform selection
+document.querySelectorAll('.platform-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        state.platform = this.dataset.platform;
+        showToast(`Platform set to: ${this.textContent.trim()}`, 'success');
+    });
 });
 
 // ============================================
@@ -1028,36 +961,32 @@ function showHelp() {
     showModal('📖 Help Guide', `
         <p><strong>Quick Start:</strong></p>
         <ol style="color: #ccc; line-height: 2; margin-left: 20px;">
-            <li>Click the <strong>Settings</strong> gear icon (⚙️)</li>
-            <li>Select your <strong>Platform</strong> (Twitch, YouTube, etc.)</li>
-            <li>Enter your <strong>Stream Key</strong> (click the help button to find it)</li>
-            <li>Click <strong>Test Key</strong> to validate your stream key</li>
-            <li>Click <strong>Start Streaming</strong></li>
-            <li>Add overlays and effects as needed</li>
+            <li>Click <strong>Settings</strong> (⚙️)</li>
+            <li>Select your <strong>Platform</strong></li>
+            <li>Enter your <strong>Stream Key</strong></li>
+            <li>Click <strong>Start Stream</strong></li>
+            <li>Add overlays and effects!</li>
         </ol>
         <br>
-        <p><strong>Features:</strong></p>
+        <p><strong>Tips:</strong></p>
         <p>🎥 Camera, Screen, or Window capture</p>
         <p>📝 Text, Image, and Frame overlays</p>
-        <p>🎬 Recording and Screenshots</p>
-        <p>🎨 Preset layouts</p>
-        <p>📊 Live stats (FPS, Bitrate, Uptime)</p>
-        <p>🔑 Multiple platform support</p>
+        <p>🎬 Record and take screenshots</p>
+        <p>🎨 Use preset layouts</p>
     `);
 }
 
 function showAbout() {
-    showModal('🎥 Web OBS Studio', `
+    showModal('🎥 Browser Streamer', `
         <p>Version 2.0.0</p>
-        <p>Complete web-based OBS alternative</p>
+        <p>Complete browser-based streaming solution</p>
+        <br>
         <p><strong>Features:</strong></p>
         <p>• Webcam & Screen Capture</p>
-        <p>• Multi-platform streaming (Twitch, YouTube, TikTok, Facebook)</p>
-        <p>• Stream Key support</p>
-        <p>• Text & Image Overlays</p>
+        <p>• Multi-platform support</p>
+        <p>• Overlay System</p>
         <p>• Recording & Screenshots</p>
         <p>• Preset Layouts</p>
-        <p>• RTMP Support</p>
         <br>
         <p>Made with ❤️ for content creators</p>
     `);
@@ -1082,58 +1011,22 @@ function showModal(title, content) {
 }
 
 // ============================================
-// EVENT LISTENERS
-// ============================================
-
-// Start/Stop
-startBtn.addEventListener('click', toggleStream);
-stopBtn.addEventListener('click', stopStream);
-
-// Recording
-recordBtn.addEventListener('click', toggleRecording);
-screenshotBtn.addEventListener('click', takeScreenshot);
-
-// Source Selection
-document.querySelectorAll('.source-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        switchSource(this.dataset.source);
-    });
-});
-
-// Overlays
-document.querySelectorAll('.overlay-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const type = this.dataset.overlay;
-        if (type === 'clear') {
-            clearOverlays();
-        } else {
-            addOverlay(type);
-        }
-    });
-});
-
-// Presets
-document.querySelectorAll('.preset-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        applyPreset(this.dataset.preset);
-    });
-});
-
-// ============================================
 // INITIALIZATION
 // ============================================
 
-function init() {
+async function init() {
+    await getDevices();
     loadSettings();
     
-    console.log('🎥 Web OBS Studio v2.0 loaded!');
-    console.log('📖 Click the Settings gear (⚙️) to set up your stream');
-    console.log('🔑 Enter your stream key to connect to platforms');
-    console.log('🎬 Start streaming to your favorite platform!');
-    showToast('🎥 Web OBS Studio loaded!', 'success');
+    console.log('🎥 Browser Streamer loaded!');
+    console.log('📷 Cameras available:', state.videoDevices.length);
+    console.log('🎤 Microphones available:', state.audioDevices.length);
+    console.log('📖 Click Settings to set up your stream');
+    
+    showToast('🎥 Browser Streamer ready!', 'success');
 }
 
-// Initialize when DOM is ready
+// Initialize
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
