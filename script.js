@@ -1,5 +1,5 @@
 // ============================================
-// BROWSER STREAMER - COMPLETE SCRIPT
+// BROWSER STREAMER - DUAL SOURCE
 // ============================================
 
 // ===== STATE =====
@@ -7,7 +7,10 @@ const state = {
     isStreaming: false,
     isRecording: false,
     currentSource: 'camera',
+    currentLayout: 'pip',
     mediaStream: null,
+    cameraStream: null,
+    screenStream: null,
     recorder: null,
     recordedChunks: [],
     startTime: null,
@@ -15,6 +18,7 @@ const state = {
     overlays: [],
     overlayIdCounter: 0,
     canvas: null,
+    ctx: null,
     animationFrame: null,
     platform: 'twitch',
     streamKey: '',
@@ -24,11 +28,16 @@ const state = {
     videoDevices: [],
     audioDevices: [],
     selectedCamera: '',
-    selectedMic: ''
+    selectedMic: '',
+    cameraSize: 0.25,
+    cameraPosition: 'bottom-right',
+    isDualMode: false
 };
 
 // ===== DOM ELEMENTS =====
+const mixCanvas = document.getElementById('mixCanvas');
 const previewVideo = document.getElementById('previewVideo');
+const cameraPreview = document.getElementById('cameraPreview');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const statusIndicator = document.getElementById('statusIndicator');
@@ -44,10 +53,14 @@ const settingsModal = document.getElementById('settingsModal');
 const streamStatus = document.getElementById('streamStatus');
 const streamUptime = document.getElementById('streamUptime');
 const deviceInfo = document.getElementById('deviceInfo');
+const modeInfo = document.getElementById('modeInfo');
 const cameraSelect = document.getElementById('cameraSelect');
 const micSelect = document.getElementById('micSelect');
 const fullscreenBtn = document.getElementById('fullscreenBtn');
 const recordingIndicator = document.getElementById('recordingIndicator');
+const cameraSizeSlider = document.getElementById('cameraSize');
+const cameraSizeLabel = document.getElementById('cameraSizeLabel');
+const cameraPositionSelect = document.getElementById('cameraPosition');
 
 // ============================================
 // DEVICE MANAGEMENT
@@ -55,7 +68,6 @@ const recordingIndicator = document.getElementById('recordingIndicator');
 
 async function getDevices() {
     try {
-        // Request permissions first
         await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -63,7 +75,6 @@ async function getDevices() {
         state.videoDevices = devices.filter(d => d.kind === 'videoinput');
         state.audioDevices = devices.filter(d => d.kind === 'audioinput');
         
-        // Populate camera select
         cameraSelect.innerHTML = '<option value="">Select Camera...</option>';
         state.videoDevices.forEach(device => {
             const option = document.createElement('option');
@@ -72,7 +83,6 @@ async function getDevices() {
             cameraSelect.appendChild(option);
         });
         
-        // Populate mic select
         micSelect.innerHTML = '<option value="">Select Microphone...</option>';
         state.audioDevices.forEach(device => {
             const option = document.createElement('option');
@@ -81,7 +91,6 @@ async function getDevices() {
             micSelect.appendChild(option);
         });
         
-        // Auto-select first devices
         if (state.videoDevices.length > 0) {
             cameraSelect.value = state.videoDevices[0].deviceId;
             state.selectedCamera = state.videoDevices[0].deviceId;
@@ -100,26 +109,153 @@ async function getDevices() {
     }
 }
 
-// Device selection change
-cameraSelect.addEventListener('change', function() {
-    state.selectedCamera = this.value;
-    if (state.isStreaming) {
-        restartStream();
-    }
-});
+// ============================================
+// DUAL SOURCE MIXING
+// ============================================
 
-micSelect.addEventListener('change', function() {
-    state.selectedMic = this.value;
-    if (state.isStreaming) {
-        restartStream();
-    }
-});
+function getCanvasSize() {
+    const rect = mixCanvas.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+}
 
-async function restartStream() {
-    if (state.isStreaming) {
-        stopStream();
-        setTimeout(startStream, 500);
+function drawDualSource() {
+    if (!state.ctx) {
+        state.ctx = mixCanvas.getContext('2d');
     }
+    
+    const canvas = mixCanvas;
+    const ctx = state.ctx;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    
+    // Set canvas size
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.scale(dpr, dpr);
+    
+    // Clear
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    
+    // Get video sources
+    const mainVideo = state.currentSource === 'dual' ? previewVideo : previewVideo;
+    const camVideo = cameraPreview;
+    
+    // Draw main source (screen or camera)
+    if (previewVideo.readyState >= 2 && previewVideo.videoWidth > 0) {
+        ctx.drawImage(previewVideo, 0, 0, rect.width, rect.height);
+    } else {
+        // Fill with dark background
+        ctx.fillStyle = '#0a0a15';
+        ctx.fillRect(0, 0, rect.width, rect.height);
+        ctx.fillStyle = '#666';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Waiting for source...', rect.width/2, rect.height/2);
+    }
+    
+    // Draw camera overlay if in dual mode
+    if (state.currentSource === 'dual' && camVideo.readyState >= 2 && camVideo.videoWidth > 0) {
+        const size = state.cameraSize;
+        const pos = state.cameraPosition;
+        
+        let camWidth = rect.width * size;
+        let camHeight = (camVideo.videoHeight / camVideo.videoWidth) * camWidth;
+        
+        // Calculate position
+        let x, y;
+        const padding = 20;
+        switch(pos) {
+            case 'bottom-right':
+                x = rect.width - camWidth - padding;
+                y = rect.height - camHeight - padding;
+                break;
+            case 'bottom-left':
+                x = padding;
+                y = rect.height - camHeight - padding;
+                break;
+            case 'top-right':
+                x = rect.width - camWidth - padding;
+                y = padding;
+                break;
+            case 'top-left':
+                x = padding;
+                y = padding;
+                break;
+            default:
+                x = rect.width - camWidth - padding;
+                y = rect.height - camHeight - padding;
+        }
+        
+        // Draw camera with rounded corners
+        const radius = 12;
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + camWidth - radius, y);
+        ctx.quadraticCurveTo(x + camWidth, y, x + camWidth, y + radius);
+        ctx.lineTo(x + camWidth, y + camHeight - radius);
+        ctx.quadraticCurveTo(x + camWidth, y + camHeight, x + camWidth - radius, y + camHeight);
+        ctx.lineTo(x + radius, y + camHeight);
+        ctx.quadraticCurveTo(x, y + camHeight, x, y + camHeight - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+        ctx.clip();
+        
+        ctx.drawImage(camVideo, x, y, camWidth, camHeight);
+        
+        // Reset clip
+        ctx.restore();
+        ctx.save();
+        
+        // Draw border
+        ctx.strokeStyle = 'rgba(233, 69, 96, 0.6)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + camWidth - radius, y);
+        ctx.quadraticCurveTo(x + camWidth, y, x + camWidth, y + radius);
+        ctx.lineTo(x + camWidth, y + camHeight - radius);
+        ctx.quadraticCurveTo(x + camWidth, y + camHeight, x + camWidth - radius, y + camHeight);
+        ctx.lineTo(x + radius, y + camHeight);
+        ctx.quadraticCurveTo(x, y + camHeight, x, y + camHeight - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+        ctx.stroke();
+    }
+    
+    // Draw overlays
+    state.overlays.forEach(overlay => {
+        if (overlay.type === 'text') {
+            ctx.fillStyle = overlay.color || '#ffffff';
+            ctx.font = `${overlay.size || 48}px Arial`;
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 10;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(overlay.text || 'Hello World', overlay.x || rect.width/2, overlay.y || rect.height/2);
+            ctx.shadowBlur = 0;
+        } else if (overlay.type === 'frame') {
+            ctx.strokeStyle = overlay.color || '#e94560';
+            ctx.lineWidth = overlay.width || 4;
+            ctx.strokeRect(overlay.x || 50, overlay.y || 50, overlay.w || 200, overlay.h || 150);
+        } else if (overlay.type === 'image' && overlay.image) {
+            ctx.drawImage(overlay.image, overlay.x || 50, overlay.y || 50, overlay.w || 200, overlay.h || 150);
+        }
+    });
+}
+
+function startDualRendering() {
+    function renderLoop() {
+        if (state.isStreaming || state.isRecording) {
+            drawDualSource();
+        }
+        state.animationFrame = requestAnimationFrame(renderLoop);
+    }
+    renderLoop();
 }
 
 // ============================================
@@ -128,7 +264,6 @@ async function restartStream() {
 
 async function startStream() {
     try {
-        // Check stream key
         const streamKey = document.getElementById('streamKey')?.value;
         if (!streamKey) {
             showToast('Please set your stream key in Settings!', 'error');
@@ -136,13 +271,12 @@ async function startStream() {
             return;
         }
         
-        // Get resolution
         const resolution = document.getElementById('videoResolution')?.value || '1280x720';
         const [width, height] = resolution.split('x').map(Number);
         const fps = parseInt(document.getElementById('videoFPS')?.value || 30);
         
-        // Build constraints
-        const constraints = {
+        // Get camera stream
+        const cameraConstraints = {
             video: {
                 width: { ideal: width },
                 height: { ideal: height },
@@ -151,50 +285,73 @@ async function startStream() {
             audio: true
         };
         
-        // Add specific devices if selected
         if (state.selectedCamera) {
-            constraints.video.deviceId = { exact: state.selectedCamera };
+            cameraConstraints.video.deviceId = { exact: state.selectedCamera };
         }
         if (state.selectedMic) {
-            constraints.audio.deviceId = { exact: state.selectedMic };
+            cameraConstraints.audio.deviceId = { exact: state.selectedMic };
         }
         
-        // Get media stream
-        let stream;
+        const cameraStream = await navigator.mediaDevices.getUserMedia(cameraConstraints);
+        state.cameraStream = cameraStream;
+        cameraPreview.srcObject = cameraStream;
+        await cameraPreview.play();
         
-        switch (state.currentSource) {
-            case 'camera':
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
-                break;
-            case 'screen':
-                stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
-                    audio: true
-                });
-                break;
-            case 'window':
-                stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-                    audio: true
-                });
-                break;
+        let screenStream = null;
+        let mainStream = null;
+        
+        if (state.currentSource === 'dual') {
+            // Get screen stream for dual mode
+            screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+                audio: true
+            });
+            state.screenStream = screenStream;
+            previewVideo.srcObject = screenStream;
+            await previewVideo.play();
+            
+            // Create mixed stream from canvas
+            const mixedStream = mixCanvas.captureStream(fps);
+            // Add audio from camera
+            const audioTracks = cameraStream.getAudioTracks();
+            audioTracks.forEach(track => mixedStream.addTrack(track));
+            
+            state.mediaStream = mixedStream;
+            state.isDualMode = true;
+            modeInfo.textContent = 'Dual (Camera + Screen)';
+            
+        } else if (state.currentSource === 'screen') {
+            screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+                audio: true
+            });
+            state.screenStream = screenStream;
+            state.mediaStream = screenStream;
+            previewVideo.srcObject = screenStream;
+            await previewVideo.play();
+            state.isDualMode = false;
+            modeInfo.textContent = 'Screen Only';
+            
+        } else {
+            // Camera only
+            state.mediaStream = cameraStream;
+            previewVideo.srcObject = cameraStream;
+            await previewVideo.play();
+            state.isDualMode = false;
+            modeInfo.textContent = 'Camera Only';
         }
-        
-        state.mediaStream = stream;
-        previewVideo.srcObject = stream;
-        await previewVideo.play();
         
         state.isStreaming = true;
         updateUI();
         showToast('🎥 Stream started!', 'success');
         
-        // Start monitors
+        // Start rendering
+        startDualRendering();
         startFPSMonitor();
         startUptimeTracker();
-        startOverlayRendering();
         
         // Update device info
-        const videoTrack = stream.getVideoTracks()[0];
+        const videoTrack = state.mediaStream.getVideoTracks()[0];
         if (videoTrack) {
             const settings = videoTrack.getSettings();
             deviceInfo.textContent = `${state.currentSource} - ${settings.width}x${settings.height}`;
@@ -210,30 +367,38 @@ function stopStream() {
     if (state.mediaStream) {
         state.mediaStream.getTracks().forEach(track => track.stop());
         state.mediaStream = null;
-        previewVideo.srcObject = null;
-        state.isStreaming = false;
-        
-        // Stop overlay rendering
-        if (state.animationFrame) {
-            cancelAnimationFrame(state.animationFrame);
-            state.animationFrame = null;
-        }
-        
-        // Stop uptime tracker
-        if (state.uptimeTimer) {
-            clearInterval(state.uptimeTimer);
-            state.uptimeTimer = null;
-        }
-        state.streamUptime = 0;
-        streamUptime.textContent = '00:00:00';
-        
-        updateUI();
-        showToast('⏹️ Stream stopped', 'success');
-        
-        // Stop recording if active
-        if (state.isRecording) {
-            stopRecording();
-        }
+    }
+    if (state.cameraStream) {
+        state.cameraStream.getTracks().forEach(track => track.stop());
+        state.cameraStream = null;
+    }
+    if (state.screenStream) {
+        state.screenStream.getTracks().forEach(track => track.stop());
+        state.screenStream = null;
+    }
+    
+    previewVideo.srcObject = null;
+    cameraPreview.srcObject = null;
+    state.isStreaming = false;
+    state.isDualMode = false;
+    
+    if (state.animationFrame) {
+        cancelAnimationFrame(state.animationFrame);
+        state.animationFrame = null;
+    }
+    
+    if (state.uptimeTimer) {
+        clearInterval(state.uptimeTimer);
+        state.uptimeTimer = null;
+    }
+    state.streamUptime = 0;
+    streamUptime.textContent = '00:00:00';
+    
+    updateUI();
+    showToast('⏹️ Stream stopped', 'success');
+    
+    if (state.isRecording) {
+        stopRecording();
     }
 }
 
@@ -249,54 +414,13 @@ function toggleStream() {
 // OVERLAY SYSTEM
 // ============================================
 
-function startOverlayRendering() {
-    const canvas = document.createElement('canvas');
-    const resolution = document.getElementById('videoResolution')?.value || '1280x720';
-    const [width, height] = resolution.split('x').map(Number);
-    canvas.width = width;
-    canvas.height = height;
-    state.canvas = canvas;
-
-    function renderFrame() {
-        if (!state.isStreaming || !previewVideo.videoWidth) {
-            state.animationFrame = requestAnimationFrame(renderFrame);
-            return;
-        }
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(previewVideo, 0, 0, canvas.width, canvas.height);
-        
-        state.overlays.forEach(overlay => {
-            if (overlay.type === 'text') {
-                ctx.fillStyle = overlay.color || '#ffffff';
-                ctx.font = `${overlay.size || 48}px Arial`;
-                ctx.shadowColor = 'rgba(0,0,0,0.8)';
-                ctx.shadowBlur = 10;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(overlay.text || 'Hello World', overlay.x || canvas.width/2, overlay.y || canvas.height/2);
-                ctx.shadowBlur = 0;
-            } else if (overlay.type === 'frame') {
-                ctx.strokeStyle = overlay.color || '#e94560';
-                ctx.lineWidth = overlay.width || 4;
-                ctx.strokeRect(overlay.x || 50, overlay.y || 50, overlay.w || 200, overlay.h || 150);
-            } else if (overlay.type === 'image' && overlay.image) {
-                ctx.drawImage(overlay.image, overlay.x || 50, overlay.y || 50, overlay.w || 200, overlay.h || 150);
-            }
-        });
-
-        state.animationFrame = requestAnimationFrame(renderFrame);
-    }
-
-    renderFrame();
-}
-
 function addOverlay(type) {
+    const rect = mixCanvas.getBoundingClientRect();
     const overlay = {
         id: state.overlayIdCounter++,
         type: type,
-        x: 100 + Math.random() * 300,
-        y: 100 + Math.random() * 200,
+        x: rect.width/2 - 100,
+        y: rect.height/2 - 50,
         color: '#ffffff',
         text: 'Text Overlay',
         size: 48,
@@ -426,6 +550,8 @@ function makeDraggable(el, overlay) {
 function applyPreset(preset) {
     clearOverlays();
     
+    const rect = mixCanvas.getBoundingClientRect();
+    
     switch(preset) {
         case 'default':
             break;
@@ -435,8 +561,8 @@ function applyPreset(preset) {
             if (frameOverlay) {
                 frameOverlay.x = 20;
                 frameOverlay.y = 20;
-                frameOverlay.w = 1240;
-                frameOverlay.h = 680;
+                frameOverlay.w = rect.width - 40;
+                frameOverlay.h = rect.height - 40;
                 frameOverlay.color = '#e94560';
             }
             break;
@@ -446,17 +572,17 @@ function applyPreset(preset) {
             if (frame1) {
                 frame1.x = 20;
                 frame1.y = 20;
-                frame1.w = 600;
-                frame1.h = 680;
+                frame1.w = rect.width/2 - 30;
+                frame1.h = rect.height - 40;
                 frame1.color = '#ffd93d';
             }
             addOverlay('frame');
             const frame2 = state.overlays[1];
             if (frame2) {
-                frame2.x = 660;
+                frame2.x = rect.width/2 + 10;
                 frame2.y = 20;
-                frame2.w = 600;
-                frame2.h = 680;
+                frame2.w = rect.width/2 - 30;
+                frame2.h = rect.height - 40;
                 frame2.color = '#6bcb77';
             }
             break;
@@ -465,7 +591,7 @@ function applyPreset(preset) {
             const textOverlay = state.overlays[0];
             if (textOverlay) {
                 textOverlay.text = 'LIVE STREAM';
-                textOverlay.x = 640;
+                textOverlay.x = rect.width/2;
                 textOverlay.y = 60;
                 textOverlay.size = 64;
                 textOverlay.color = '#e94560';
@@ -475,8 +601,8 @@ function applyPreset(preset) {
             if (frameOverlay2) {
                 frameOverlay2.x = 20;
                 frameOverlay2.y = 20;
-                frameOverlay2.w = 1240;
-                frameOverlay2.h = 680;
+                frameOverlay2.w = rect.width - 40;
+                frameOverlay2.h = rect.height - 40;
                 frameOverlay2.color = 'rgba(233,69,96,0.3)';
                 frameOverlay2.width = 2;
             }
@@ -488,7 +614,7 @@ function applyPreset(preset) {
 }
 
 // ============================================
-// FPS MONITOR
+// FPS & UPTIME
 // ============================================
 
 let frameCount = 0;
@@ -506,7 +632,6 @@ function startFPSMonitor() {
         if (now - lastFpsUpdate >= 1000) {
             fpsCounter.textContent = `FPS: ${frameCount}`;
             
-            // Simulate bitrate
             const bitrate = 3000 + Math.random() * 2000;
             bitrateHistory.push(bitrate);
             if (bitrateHistory.length > 10) bitrateHistory.shift();
@@ -516,9 +641,8 @@ function startFPSMonitor() {
             frameCount = 0;
             lastFpsUpdate = now;
             
-            if (previewVideo.videoWidth) {
-                resolutionDisplay.textContent = `Resolution: ${previewVideo.videoWidth}x${previewVideo.videoHeight}`;
-            }
+            const rect = mixCanvas.getBoundingClientRect();
+            resolutionDisplay.textContent = `Resolution: ${Math.round(rect.width)}x${Math.round(rect.height)}`;
         }
         if (state.isStreaming) {
             requestAnimationFrame(updateFPS);
@@ -559,18 +683,11 @@ function toggleRecording() {
 }
 
 function startRecording() {
-    if (!state.canvas) {
-        showToast('Canvas not ready!', 'error');
-        return;
-    }
-
     try {
-        const stream = state.canvas.captureStream(30);
+        const stream = mixCanvas.captureStream(30);
         if (state.mediaStream) {
             const audioTracks = state.mediaStream.getAudioTracks();
-            if (audioTracks.length > 0) {
-                stream.addTrack(audioTracks[0]);
-            }
+            audioTracks.forEach(track => stream.addTrack(track));
         }
 
         state.recorder = new MediaRecorder(stream, {
@@ -595,10 +712,8 @@ function startRecording() {
             a.click();
             URL.revokeObjectURL(url);
             state.recordedChunks = [];
-            showToast('Recording saved!', 'success');
-            
-            // Update indicator
             recordingIndicator.style.display = 'none';
+            showToast('Recording saved!', 'success');
         };
 
         state.recorder.start();
@@ -653,14 +768,9 @@ function takeScreenshot() {
         return;
     }
 
-    if (!state.canvas) {
-        showToast('Canvas not ready!', 'error');
-        return;
-    }
-
     const link = document.createElement('a');
     link.download = `screenshot-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
-    link.href = state.canvas.toDataURL('image/png');
+    link.href = mixCanvas.toDataURL('image/png');
     link.click();
     showToast('Screenshot saved!', 'success');
 }
@@ -706,7 +816,6 @@ function testStreamKey() {
         return;
     }
     
-    // Check for common patterns
     const validPatterns = [
         /^[a-zA-Z0-9_-]{8,40}$/,
         /^live_[a-zA-Z0-9_-]+$/,
@@ -902,12 +1011,42 @@ document.querySelectorAll('.source-btn').forEach(btn => {
         document.querySelectorAll('.source-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         state.currentSource = this.dataset.source;
+        
+        // Show/hide dual layout panel
+        const dualPanel = document.getElementById('dualLayoutPanel');
+        if (state.currentSource === 'dual') {
+            dualPanel.style.display = 'block';
+        } else {
+            dualPanel.style.display = 'none';
+        }
+        
         showToast(`Switched to ${this.dataset.source}`, 'success');
         if (state.isStreaming) {
             stopStream();
             setTimeout(startStream, 500);
         }
     });
+});
+
+// Layout Selection
+document.querySelectorAll('.layout-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.layout-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        state.currentLayout = this.dataset.layout;
+        showToast(`Layout: ${this.textContent.trim()}`, 'success');
+    });
+});
+
+// Camera Size
+cameraSizeSlider.addEventListener('input', function() {
+    state.cameraSize = parseFloat(this.value);
+    cameraSizeLabel.textContent = Math.round(state.cameraSize * 100) + '%';
+});
+
+// Camera Position
+cameraPositionSelect.addEventListener('change', function() {
+    state.cameraPosition = this.value;
 });
 
 // Overlays
@@ -953,6 +1092,23 @@ document.querySelectorAll('.platform-btn').forEach(btn => {
     });
 });
 
+// Device selection
+cameraSelect.addEventListener('change', function() {
+    state.selectedCamera = this.value;
+    if (state.isStreaming) {
+        stopStream();
+        setTimeout(startStream, 500);
+    }
+});
+
+micSelect.addEventListener('change', function() {
+    state.selectedMic = this.value;
+    if (state.isStreaming) {
+        stopStream();
+        setTimeout(startStream, 500);
+    }
+});
+
 // ============================================
 // MODAL HELPERS
 // ============================================
@@ -964,29 +1120,30 @@ function showHelp() {
             <li>Click <strong>Settings</strong> (⚙️)</li>
             <li>Select your <strong>Platform</strong></li>
             <li>Enter your <strong>Stream Key</strong></li>
+            <li>Select <strong>Dual</strong> mode for camera + screen</li>
+            <li>Adjust camera <strong>size</strong> and <strong>position</strong></li>
             <li>Click <strong>Start Stream</strong></li>
-            <li>Add overlays and effects!</li>
         </ol>
         <br>
-        <p><strong>Tips:</strong></p>
-        <p>🎥 Camera, Screen, or Window capture</p>
-        <p>📝 Text, Image, and Frame overlays</p>
-        <p>🎬 Record and take screenshots</p>
-        <p>🎨 Use preset layouts</p>
+        <p><strong>Dual Mode Features:</strong></p>
+        <p>📷 Camera overlay on screen</p>
+        <p>📐 Adjustable camera size (10%-50%)</p>
+        <p>📍 Move camera to any corner</p>
+        <p>🔄 Switch layouts (PiP, Side-by-Side, Grid)</p>
     `);
 }
 
 function showAbout() {
     showModal('🎥 Browser Streamer', `
-        <p>Version 2.0.0</p>
+        <p>Version 2.0.0 - Dual Source</p>
         <p>Complete browser-based streaming solution</p>
         <br>
         <p><strong>Features:</strong></p>
-        <p>• Webcam & Screen Capture</p>
-        <p>• Multi-platform support</p>
-        <p>• Overlay System</p>
+        <p>• Camera + Screen simultaneous</p>
+        <p>• Adjustable camera overlay</p>
+        <p>• Multiple layouts</p>
         <p>• Recording & Screenshots</p>
-        <p>• Preset Layouts</p>
+        <p>• Overlay System</p>
         <br>
         <p>Made with ❤️ for content creators</p>
     `);
@@ -1011,6 +1168,16 @@ function showModal(title, content) {
 }
 
 // ============================================
+// WINDOW RESIZE HANDLER
+// ============================================
+
+window.addEventListener('resize', () => {
+    if (state.isStreaming || state.isRecording) {
+        drawDualSource();
+    }
+});
+
+// ============================================
 // INITIALIZATION
 // ============================================
 
@@ -1018,12 +1185,20 @@ async function init() {
     await getDevices();
     loadSettings();
     
-    console.log('🎥 Browser Streamer loaded!');
+    // Set initial canvas size
+    const rect = mixCanvas.getBoundingClientRect();
+    mixCanvas.width = rect.width;
+    mixCanvas.height = rect.height;
+    
+    console.log('🎥 Browser Streamer - Dual Source loaded!');
     console.log('📷 Cameras available:', state.videoDevices.length);
     console.log('🎤 Microphones available:', state.audioDevices.length);
     console.log('📖 Click Settings to set up your stream');
     
-    showToast('🎥 Browser Streamer ready!', 'success');
+    // Hide dual panel initially
+    document.getElementById('dualLayoutPanel').style.display = 'none';
+    
+    showToast('🎥 Dual Source Streamer ready!', 'success');
 }
 
 // Initialize
