@@ -1,5 +1,5 @@
 // ============================================
-// WEB OBS STUDIO - STREAM KEY EDITION
+// WEB OBS STUDIO - STREAM KEY EDITION (FIXED)
 // ============================================
 
 // ===== STATE =====
@@ -23,7 +23,8 @@ const state = {
     streamCategory: '',
     streamUptime: 0,
     uptimeTimer: null,
-    streamKeyVisible: false
+    streamKeyVisible: false,
+    streamKeyValid: false
 };
 
 // ===== DOM ELEMENTS =====
@@ -46,6 +47,169 @@ const streamUptime = document.getElementById('streamUptime');
 const streamKeyStatus = document.getElementById('streamKeyStatus');
 
 // ============================================
+// STREAM KEY VALIDATION
+// ============================================
+
+function validateStreamKey(key, platform) {
+    if (!key || key.length < 8) {
+        return { valid: false, message: 'Stream key is too short (min 8 characters)' };
+    }
+
+    // Different platforms have different key formats
+    const platformPatterns = {
+        'twitch': /^[a-zA-Z0-9_-]{30,40}$/,
+        'youtube': /^[a-zA-Z0-9_-]{20,40}$/,
+        'tiktok': /^[a-zA-Z0-9_-]{20,40}$/,
+        'facebook': /^[a-zA-Z0-9_-]{20,40}$/,
+        'custom': /^.{8,}$/
+    };
+
+    const pattern = platformPatterns[platform] || platformPatterns['custom'];
+    
+    if (pattern.test(key)) {
+        return { valid: true, message: 'Valid stream key format' };
+    } else {
+        return { valid: false, message: 'Invalid stream key format for this platform' };
+    }
+}
+
+function testStreamKey() {
+    const key = document.getElementById('streamKey')?.value || '';
+    const platform = state.platform;
+    
+    const result = validateStreamKey(key, platform);
+    state.streamKeyValid = result.valid;
+    
+    // Update UI
+    const statusEl = document.getElementById('keyValidationStatus');
+    if (statusEl) {
+        statusEl.textContent = result.message;
+        statusEl.style.color = result.valid ? '#51cf66' : '#ff6b6b';
+        statusEl.style.display = 'block';
+    }
+    
+    if (result.valid) {
+        showToast('✅ Stream key looks valid!', 'success');
+    } else {
+        showToast('⚠️ ' + result.message, 'error');
+    }
+    
+    return result.valid;
+}
+
+// ============================================
+// STREAM KEY HELPERS
+// ============================================
+
+function toggleStreamKeyVisibility() {
+    const input = document.getElementById('streamKey');
+    state.streamKeyVisible = !state.streamKeyVisible;
+    input.type = state.streamKeyVisible ? 'text' : 'password';
+    const btn = document.querySelector('.stream-key-help .btn:first-child');
+    if (btn) {
+        btn.innerHTML = state.streamKeyVisible ? '<i class="fas fa-eye-slash"></i> Hide' : '<i class="fas fa-eye"></i> Show';
+    }
+}
+
+function copyStreamKey() {
+    const input = document.getElementById('streamKey');
+    if (input.value) {
+        navigator.clipboard.writeText(input.value).then(() => {
+            showToast('📋 Stream key copied to clipboard!', 'success');
+        }).catch(() => {
+            // Fallback
+            input.select();
+            document.execCommand('copy');
+            showToast('📋 Stream key copied to clipboard!', 'success');
+        });
+    } else {
+        showToast('No stream key to copy!', 'error');
+    }
+}
+
+function getPlatformStreamKeyGuide() {
+    const guides = {
+        'twitch': {
+            name: 'Twitch',
+            steps: [
+                'Go to your Twitch Dashboard',
+                'Click on "Stream" in the left menu',
+                'Find "Stream Key" under "Stream Settings"',
+                'Copy the key and paste it here'
+            ],
+            url: 'https://www.twitch.tv/settings/stream'
+        },
+        'youtube': {
+            name: 'YouTube',
+            steps: [
+                'Go to YouTube Studio',
+                'Click "Go Live" in the top right',
+                'Select "Stream" from the left menu',
+                'Copy the "Stream Key" from the stream settings'
+            ],
+            url: 'https://studio.youtube.com/channel/'
+        },
+        'tiktok': {
+            name: 'TikTok',
+            steps: [
+                'Open TikTok Live Studio',
+                'Go to "Settings"',
+                'Find "Stream Key" under "Connection"',
+                'Copy the key and paste it here'
+            ],
+            url: 'https://www.tiktok.com/live'
+        },
+        'facebook': {
+            name: 'Facebook',
+            steps: [
+                'Go to Facebook Creator Studio',
+                'Click "Live" in the left menu',
+                'Select "Stream Settings"',
+                'Copy the "Stream Key"'
+            ],
+            url: 'https://www.facebook.com/live/producer'
+        }
+    };
+    
+    return guides[state.platform] || guides['twitch'];
+}
+
+function showStreamKeyHelp() {
+    const guide = getPlatformStreamKeyGuide();
+    
+    let stepsHtml = guide.steps.map((step, i) => 
+        `<li style="color: #ccc; line-height: 1.8;">${i+1}. ${step}</li>`
+    ).join('');
+    
+    showModal('🔑 How to Get Your Stream Key', `
+        <p><strong>For ${guide.name}:</strong></p>
+        <ol style="color: #ccc; line-height: 2; margin-left: 20px; margin-bottom: 16px;">
+            ${stepsHtml}
+        </ol>
+        <div style="background: rgba(233,69,96,0.1); padding: 12px 16px; border-radius: 8px; border-left: 3px solid #e94560; margin-bottom: 16px;">
+            <p style="color: #ff6b6b; margin: 0;"><strong>⚠️ Important:</strong> Never share your stream key with anyone!</p>
+            <p style="color: #888; margin: 4px 0 0 0; font-size: 0.85rem;">Your stream key is like a password for your stream.</p>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="window.open('${guide.url}', '_blank')" style="flex: 1; justify-content: center;">
+                <i class="fas fa-external-link-alt"></i> Open ${guide.name}
+            </button>
+            <button class="btn btn-success" onclick="closeModal(); setTimeout(() => document.getElementById('streamKey').focus(), 300);" style="flex: 1; justify-content: center;">
+                <i class="fas fa-paste"></i> Enter Key
+            </button>
+        </div>
+    `);
+}
+
+// Close modal helper
+function closeModal() {
+    const modal = document.querySelector('.modal-overlay.show');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+// ============================================
 // STREAMING PLATFORM CONNECTION
 // ============================================
 
@@ -53,8 +217,15 @@ function connectToPlatform() {
     const platform = state.platform;
     const streamKey = document.getElementById('streamKey')?.value || '';
     
-    if (!streamKey && platform !== 'custom') {
+    // Validate stream key
+    if (!streamKey) {
         showToast('Please enter your stream key in Settings!', 'error');
+        return false;
+    }
+    
+    const validation = validateStreamKey(streamKey, platform);
+    if (!validation.valid) {
+        showToast('⚠️ ' + validation.message, 'error');
         return false;
     }
     
@@ -76,7 +247,7 @@ function connectToPlatform() {
     
     streamPlatform.textContent = platformNames[platform] || 'Connected';
     streamPlatform.style.color = platformColors[platform] || '#51cf66';
-    streamStatus.textContent = 'Live';
+    streamStatus.textContent = 'Live (Simulated)';
     streamStatus.style.color = '#51cf66';
     
     // Show stream key status
@@ -84,11 +255,11 @@ function connectToPlatform() {
         const maskedKey = streamKey.length > 8 ? 
             streamKey.substring(0, 4) + '••••' + streamKey.substring(streamKey.length - 4) : 
             '••••••••';
-        streamKeyStatus.textContent = `Set (${maskedKey})`;
+        streamKeyStatus.textContent = `Set ✓ (${maskedKey})`;
         streamKeyStatus.style.color = '#51cf66';
     }
     
-    showToast(`Connected to ${platformNames[platform]}!`, 'success');
+    showToast(`✅ Connected to ${platformNames[platform]}!`, 'success');
     return true;
 }
 
@@ -107,10 +278,17 @@ function disconnectFromPlatform() {
 
 async function startStream() {
     try {
-        // Check if stream key is set
+        // Check if stream key is set and valid
         const streamKey = document.getElementById('streamKey')?.value;
         if (!streamKey) {
             showToast('Please set your stream key in Settings!', 'error');
+            settingsModal.classList.add('show');
+            return;
+        }
+        
+        const validation = validateStreamKey(streamKey, state.platform);
+        if (!validation.valid) {
+            showToast('⚠️ ' + validation.message, 'error');
             settingsModal.classList.add('show');
             return;
         }
@@ -156,7 +334,7 @@ async function startStream() {
         state.isStreaming = true;
         connectToPlatform();
         updateUI();
-        showToast('Stream started successfully!', 'success');
+        showToast('🎥 Stream started successfully!', 'success');
         
         // Start FPS counter
         startFPSMonitor();
@@ -196,7 +374,7 @@ function stopStream() {
 
         disconnectFromPlatform();
         updateUI();
-        showToast('Stream stopped', 'success');
+        showToast('⏹️ Stream stopped', 'success');
         
         // Stop recording if active
         if (state.isRecording) {
@@ -641,60 +819,6 @@ function takeScreenshot() {
 }
 
 // ============================================
-// STREAM KEY HELPERS
-// ============================================
-
-function toggleStreamKeyVisibility() {
-    const input = document.getElementById('streamKey');
-    state.streamKeyVisible = !state.streamKeyVisible;
-    input.type = state.streamKeyVisible ? 'text' : 'password';
-    const btn = document.querySelector('.stream-key-help .btn:first-child');
-    btn.innerHTML = state.streamKeyVisible ? '<i class="fas fa-eye-slash"></i> Hide' : '<i class="fas fa-eye"></i> Show';
-}
-
-function copyStreamKey() {
-    const input = document.getElementById('streamKey');
-    if (input.value) {
-        navigator.clipboard.writeText(input.value).then(() => {
-            showToast('Stream key copied to clipboard!', 'success');
-        }).catch(() => {
-            // Fallback
-            input.select();
-            document.execCommand('copy');
-            showToast('Stream key copied to clipboard!', 'success');
-        });
-    } else {
-        showToast('No stream key to copy!', 'error');
-    }
-}
-
-function showStreamKeyHelp() {
-    const platformNames = {
-        'twitch': 'Twitch',
-        'youtube': 'YouTube',
-        'tiktok': 'TikTok',
-        'facebook': 'Facebook'
-    };
-    
-    const platform = state.platform;
-    const name = platformNames[platform] || 'Your';
-    
-    showModal('🔑 How to Get Your Stream Key', `
-        <p><strong>For ${name}:</strong></p>
-        <ol style="color: #ccc; line-height: 2; margin-left: 20px;">
-            <li>Log in to your ${name} account</li>
-            <li>Go to your <strong>Dashboard</strong> or <strong>Creator Studio</strong></li>
-            <li>Find <strong>Stream Settings</strong> or <strong>Stream Key</strong></li>
-            <li>Copy your stream key</li>
-            <li>Paste it into the <strong>Stream Key</strong> field above</li>
-        </ol>
-        <br>
-        <p><strong>⚠️ Important:</strong> Never share your stream key with anyone!</p>
-        <p style="color: #666; font-size: 0.9rem;">Your stream key is like a password for your stream.</p>
-    `);
-}
-
-// ============================================
 // UI UPDATES
 // ============================================
 
@@ -835,12 +959,14 @@ function saveSettings() {
     localStorage.setItem('obs_settings', JSON.stringify(settings));
     
     // Update stream key status
-    if (settings.streamKey) {
-        const maskedKey = settings.streamKey.length > 8 ? 
-            settings.streamKey.substring(0, 4) + '••••' + settings.streamKey.substring(settings.streamKey.length - 4) : 
+    const key = settings.streamKey;
+    if (key) {
+        const validation = validateStreamKey(key, state.platform);
+        const maskedKey = key.length > 8 ? 
+            key.substring(0, 4) + '••••' + key.substring(key.length - 4) : 
             '••••••••';
-        streamKeyStatus.textContent = `Set (${maskedKey})`;
-        streamKeyStatus.style.color = '#51cf66';
+        streamKeyStatus.textContent = validation.valid ? `Set ✓ (${maskedKey})` : `Set ⚠️ (${maskedKey})`;
+        streamKeyStatus.style.color = validation.valid ? '#51cf66' : '#ff6b6b';
     }
     
     showToast('Settings saved!', 'success');
@@ -904,7 +1030,8 @@ function showHelp() {
         <ol style="color: #ccc; line-height: 2; margin-left: 20px;">
             <li>Click the <strong>Settings</strong> gear icon (⚙️)</li>
             <li>Select your <strong>Platform</strong> (Twitch, YouTube, etc.)</li>
-            <li>Enter your <strong>Stream Key</strong> (get from your platform)</li>
+            <li>Enter your <strong>Stream Key</strong> (click the help button to find it)</li>
+            <li>Click <strong>Test Key</strong> to validate your stream key</li>
             <li>Click <strong>Start Streaming</strong></li>
             <li>Add overlays and effects as needed</li>
         </ol>
