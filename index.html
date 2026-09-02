@@ -3,18 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web OBS Studio</title>
+    <title>Browser Streamer</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="manifest" href="manifest.json">
-    <link rel="icon" type="image/png" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎥</text></svg>">
 </head>
 <body>
-    <!-- ===== TOP NAVIGATION ===== -->
+    <!-- ===== HEADER ===== -->
     <header class="header">
         <div class="logo">
             <i class="fas fa-video"></i>
-            <span>Web OBS Studio</span>
+            <span>Browser Streamer</span>
         </div>
         <div class="status-bar">
             <span id="statusIndicator" class="status-offline">
@@ -22,7 +20,7 @@
             </span>
             <div class="controls">
                 <button id="startBtn" class="btn btn-success">
-                    <i class="fas fa-play"></i> Start Streaming
+                    <i class="fas fa-play"></i> Start Stream
                 </button>
                 <button id="stopBtn" class="btn btn-danger" disabled>
                     <i class="fas fa-stop"></i> Stop
@@ -30,56 +28,37 @@
                 <button id="settingsBtn" class="btn btn-settings">
                     <i class="fas fa-cog"></i>
                 </button>
+                <button id="fullscreenBtn" class="btn btn-secondary">
+                    <i class="fas fa-expand"></i>
+                </button>
             </div>
         </div>
     </header>
 
     <!-- ===== MAIN LAYOUT ===== -->
     <main class="main-layout">
-        <!-- Left: Video Preview -->
+        <!-- Video Preview -->
         <section class="preview-section">
             <div class="preview-container">
                 <video id="previewVideo" autoplay playsinline muted></video>
-                <div class="overlay-container" id="overlayContainer">
-                    <!-- Dynamic overlays will be added here -->
-                </div>
+                <div class="overlay-container" id="overlayContainer"></div>
                 <div class="preview-controls">
                     <span id="fpsCounter">FPS: 0</span>
                     <span id="resolutionDisplay">Resolution: --</span>
                     <span id="bitrateDisplay">Bitrate: 0 Kbps</span>
+                    <span id="recordingIndicator" style="display: none;">
+                        <i class="fas fa-circle" style="color: #e94560;"></i> Recording
+                    </span>
                 </div>
             </div>
         </section>
 
-        <!-- Right: Controls Panel -->
+        <!-- Controls Panel -->
         <section class="controls-section">
-            <!-- Stream Info -->
-            <div class="panel">
-                <h3><i class="fas fa-broadcast"></i> Stream Status</h3>
-                <div class="stream-stats">
-                    <div class="stat-item">
-                        <span class="stat-label">Platform:</span>
-                        <span id="streamPlatform" class="stat-value">Not Connected</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Status:</span>
-                        <span id="streamStatus" class="stat-value">Offline</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Uptime:</span>
-                        <span id="streamUptime" class="stat-value">00:00:00</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Stream Key:</span>
-                        <span id="streamKeyStatus" class="stat-value">Not Set</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Source Selector -->
+            <!-- Source Selection -->
             <div class="panel">
                 <h3><i class="fas fa-source"></i> Sources</h3>
-                <div class="source-list" id="sourceList">
+                <div class="source-list">
                     <button class="source-btn active" data-source="camera">
                         <i class="fas fa-camera"></i> Camera
                     </button>
@@ -92,7 +71,20 @@
                 </div>
             </div>
 
-            <!-- Overlay Controls -->
+            <!-- Device Selection -->
+            <div class="panel">
+                <h3><i class="fas fa-microphone"></i> Devices</h3>
+                <div class="device-list">
+                    <select id="cameraSelect" class="form-select">
+                        <option value="">Select Camera...</option>
+                    </select>
+                    <select id="micSelect" class="form-select">
+                        <option value="">Select Microphone...</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Overlays -->
             <div class="panel">
                 <h3><i class="fas fa-layer-group"></i> Overlays</h3>
                 <div class="overlay-controls">
@@ -111,7 +103,7 @@
                 </div>
             </div>
 
-            <!-- Recording Controls -->
+            <!-- Recording -->
             <div class="panel">
                 <h3><i class="fas fa-record-vinyl"></i> Recording</h3>
                 <div class="recording-controls">
@@ -121,7 +113,7 @@
                     <button id="screenshotBtn" class="btn btn-screenshot">
                         <i class="fas fa-camera"></i> Screenshot
                     </button>
-                    <div class="recording-status" id="recordingStatus">
+                    <div class="recording-status">
                         <span class="recording-dot"></span>
                         <span id="recordTime">00:00:00</span>
                     </div>
@@ -146,200 +138,104 @@
                     </button>
                 </div>
             </div>
+
+            <!-- Stream Info -->
+            <div class="panel">
+                <h3><i class="fas fa-info-circle"></i> Stream Info</h3>
+                <div class="stream-info">
+                    <div class="info-item">
+                        <span class="info-label">Status:</span>
+                        <span id="streamStatus" class="info-value">Offline</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Uptime:</span>
+                        <span id="streamUptime" class="info-value">00:00:00</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Device:</span>
+                        <span id="deviceInfo" class="info-value">Camera</span>
+                    </div>
+                </div>
+            </div>
         </section>
     </main>
 
     <!-- ===== SETTINGS MODAL ===== -->
     <div class="modal-overlay" id="settingsModal">
-        <div class="modal-content modal-large">
+        <div class="modal-content">
             <div class="modal-header">
                 <h2><i class="fas fa-cog"></i> Settings</h2>
                 <button class="modal-close" onclick="closeSettings()">&times;</button>
             </div>
-            
             <div class="modal-body">
-                <!-- Tabs -->
-                <div class="settings-tabs">
-                    <button class="tab-btn active" data-tab="stream">
-                        <i class="fas fa-broadcast"></i> Stream
-                    </button>
-                    <button class="tab-btn" data-tab="video">
-                        <i class="fas fa-video"></i> Video
-                    </button>
-                    <button class="tab-btn" data-tab="audio">
-                        <i class="fas fa-music"></i> Audio
-                    </button>
-                    <button class="tab-btn" data-tab="advanced">
-                        <i class="fas fa-sliders-h"></i> Advanced
-                    </button>
-                </div>
-
-                <!-- Stream Tab -->
-                <div class="tab-content active" id="tab-stream">
-                    <div class="settings-group">
-                        <h3>Streaming Platform</h3>
-                        <div class="platform-grid">
-                            <button class="platform-btn active" data-platform="twitch">
-                                <i class="fab fa-twitch"></i> Twitch
-                            </button>
-                            <button class="platform-btn" data-platform="youtube">
-                                <i class="fab fa-youtube"></i> YouTube
-                            </button>
-                            <button class="platform-btn" data-platform="tiktok">
-                                <i class="fab fa-tiktok"></i> TikTok
-                            </button>
-                            <button class="platform-btn" data-platform="facebook">
-                                <i class="fab fa-facebook"></i> Facebook
-                            </button>
-                            <button class="platform-btn" data-platform="custom">
-                                <i class="fas fa-globe"></i> Custom RTMP
-                            </button>
-                        </div>
+                <div class="settings-group">
+                    <h3>Video Settings</h3>
+                    <div class="form-group">
+                        <label>Resolution</label>
+                        <select id="videoResolution" class="form-select">
+                            <option value="1920x1080">1920x1080 (1080p)</option>
+                            <option value="1280x720" selected>1280x720 (720p)</option>
+                            <option value="854x480">854x480 (480p)</option>
+                            <option value="640x360">640x360 (360p)</option>
+                        </select>
                     </div>
-                    
-                    <div class="settings-group" id="streamSettings">
-                        <h3>Stream Details</h3>
-                        
-                        <div class="form-group">
-                            <label>Stream Key <span class="required">*</span></label>
-                            <input type="password" id="streamKey" placeholder="Enter your stream key" class="form-input">
-                            <small>Find your stream key in your platform's dashboard under "Stream Settings"</small>
-                            <div class="stream-key-help">
-                                <button class="btn btn-small btn-secondary" onclick="toggleStreamKeyVisibility()">
-                                    <i class="fas fa-eye"></i> Show
-                                </button>
-                                <button class="btn btn-small btn-secondary" onclick="copyStreamKey()">
-                                    <i class="fas fa-copy"></i> Copy
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label>RTMP Server URL</label>
-                            <input type="text" id="rtmpServer" placeholder="rtmp://live.twitch.tv/app" class="form-input">
-                            <small>For Custom RTMP or advanced users</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Stream Title</label>
-                            <input type="text" id="streamTitle" placeholder="Enter stream title" class="form-input">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Stream Category / Game</label>
-                            <input type="text" id="streamCategory" placeholder="Enter category or game" class="form-input">
-                        </div>
-
-                        <div class="form-group">
-                            <label>Stream Tags (comma separated)</label>
-                            <input type="text" id="streamTags" placeholder="gaming, entertaining, creative" class="form-input">
-                        </div>
+                    <div class="form-group">
+                        <label>FPS</label>
+                        <select id="videoFPS" class="form-select">
+                            <option value="60">60 FPS</option>
+                            <option value="30" selected>30 FPS</option>
+                            <option value="24">24 FPS</option>
+                        </select>
                     </div>
                 </div>
 
-                <!-- Video Tab -->
-                <div class="tab-content" id="tab-video">
-                    <div class="settings-group">
-                        <h3>Video Settings</h3>
-                        <div class="form-group">
-                            <label>Base Resolution</label>
-                            <select id="videoResolution" class="form-select">
-                                <option value="1920x1080">1920x1080 (1080p)</option>
-                                <option value="1280x720" selected>1280x720 (720p)</option>
-                                <option value="854x480">854x480 (480p)</option>
-                                <option value="640x360">640x360 (360p)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>FPS</label>
-                            <select id="videoFPS" class="form-select">
-                                <option value="60">60 FPS</option>
-                                <option value="30" selected>30 FPS</option>
-                                <option value="24">24 FPS</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Bitrate</label>
-                            <select id="videoBitrate" class="form-select">
-                                <option value="6000">6000 Kbps (High)</option>
-                                <option value="4500" selected>4500 Kbps (Medium)</option>
-                                <option value="2500">2500 Kbps (Low)</option>
-                                <option value="1000">1000 Kbps (Very Low)</option>
-                            </select>
-                        </div>
+                <div class="settings-group">
+                    <h3>Streaming Platform</h3>
+                    <div class="platform-grid">
+                        <button class="platform-btn active" data-platform="twitch">
+                            <i class="fab fa-twitch"></i> Twitch
+                        </button>
+                        <button class="platform-btn" data-platform="youtube">
+                            <i class="fab fa-youtube"></i> YouTube
+                        </button>
+                        <button class="platform-btn" data-platform="tiktok">
+                            <i class="fab fa-tiktok"></i> TikTok
+                        </button>
+                        <button class="platform-btn" data-platform="facebook">
+                            <i class="fab fa-facebook"></i> Facebook
+                        </button>
                     </div>
                 </div>
 
-                <!-- Audio Tab -->
-                <div class="tab-content" id="tab-audio">
-                    <div class="settings-group">
-                        <h3>Audio Settings</h3>
-                        <div class="form-group">
-                            <label>Audio Bitrate</label>
-                            <select id="audioBitrate" class="form-select">
-                                <option value="320">320 Kbps (High)</option>
-                                <option value="160" selected>160 Kbps (Medium)</option>
-                                <option value="96">96 Kbps (Low)</option>
-                            </select>
+                <div class="settings-group">
+                    <h3>Stream Details</h3>
+                    <div class="form-group">
+                        <label>Stream Key <span class="required">*</span></label>
+                        <input type="password" id="streamKey" placeholder="Enter your stream key" class="form-input">
+                        <small>Find in your platform's dashboard under "Stream Settings"</small>
+                        <div class="stream-key-help">
+                            <button class="btn btn-small btn-secondary" onclick="toggleStreamKeyVisibility()">
+                                <i class="fas fa-eye"></i> Show
+                            </button>
+                            <button class="btn btn-small btn-secondary" onclick="copyStreamKey()">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                            <button class="btn btn-small btn-primary" onclick="testStreamKey()">
+                                <i class="fas fa-check"></i> Test Key
+                            </button>
                         </div>
-                        <div class="form-group">
-                            <label>Audio Device</label>
-                            <select id="audioDevice" class="form-select">
-                                <option value="default">Default Microphone</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Volume</label>
-                            <input type="range" id="audioVolume" min="0" max="100" value="80" class="form-range">
-                            <span id="volumeLabel">80%</span>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="micEnabled" checked>
-                                Enable Microphone
-                            </label>
-                        </div>
+                        <span id="keyValidationStatus" style="display: none; margin-top: 5px;"></span>
                     </div>
-                </div>
-
-                <!-- Advanced Tab -->
-                <div class="tab-content" id="tab-advanced">
-                    <div class="settings-group">
-                        <h3>Advanced Settings</h3>
-                        <div class="form-group">
-                            <label>Encoder</label>
-                            <select id="encoder" class="form-select">
-                                <option value="vp9">VP9 (Recommended)</option>
-                                <option value="vp8">VP8</option>
-                                <option value="h264">H.264</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Keyframe Interval (seconds)</label>
-                            <input type="number" id="keyframeInterval" value="2" min="1" max="10" class="form-input">
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="lowLatency" checked>
-                                Low Latency Mode
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="hardwareEncoding">
-                                Hardware Encoding (if available)
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="autoReconnect" checked>
-                                Auto-Reconnect on Disconnect
-                            </label>
-                        </div>
+                    <div class="form-group">
+                        <label>Stream Title</label>
+                        <input type="text" id="streamTitle" placeholder="Enter stream title" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>Category / Game</label>
+                        <input type="text" id="streamCategory" placeholder="Enter category or game" class="form-input">
                     </div>
                 </div>
             </div>
-            
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeSettings()">Close</button>
                 <button class="btn btn-success" onclick="saveSettings()">
@@ -351,11 +247,11 @@
 
     <!-- ===== FOOTER ===== -->
     <footer class="footer">
-        <p>&copy; 2026 Web OBS Studio · Made with <i class="fas fa-heart" style="color: #ff6b6b;"></i></p>
+        <p>&copy; 2026 Browser Streamer · Made with <i class="fas fa-heart" style="color: #ff6b6b;"></i></p>
         <div class="footer-links">
             <a href="#" onclick="showHelp()"><i class="fas fa-question-circle"></i> Help</a>
             <a href="#" onclick="showAbout()"><i class="fas fa-info-circle"></i> About</a>
-            <a href="#" onclick="showStreamKeyHelp()"><i class="fas fa-key"></i> Stream Key Guide</a>
+            <a href="#" onclick="showStreamKeyHelp()"><i class="fas fa-key"></i> Get Stream Key</a>
         </div>
     </footer>
 
