@@ -69,6 +69,10 @@
                         <span class="stat-label">Uptime:</span>
                         <span id="streamUptime" class="stat-value">00:00:00</span>
                     </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Stream Key:</span>
+                        <span id="streamKeyStatus" class="stat-value">Not Set</span>
+                    </div>
                 </div>
             </div>
 
@@ -159,9 +163,6 @@
                     <button class="tab-btn active" data-tab="stream">
                         <i class="fas fa-broadcast"></i> Stream
                     </button>
-                    <button class="tab-btn" data-tab="hotkeys">
-                        <i class="fas fa-keyboard"></i> Hotkeys
-                    </button>
                     <button class="tab-btn" data-tab="video">
                         <i class="fas fa-video"></i> Video
                     </button>
@@ -178,7 +179,7 @@
                     <div class="settings-group">
                         <h3>Streaming Platform</h3>
                         <div class="platform-grid">
-                            <button class="platform-btn" data-platform="twitch">
+                            <button class="platform-btn active" data-platform="twitch">
                                 <i class="fab fa-twitch"></i> Twitch
                             </button>
                             <button class="platform-btn" data-platform="youtube">
@@ -198,103 +199,40 @@
                     
                     <div class="settings-group" id="streamSettings">
                         <h3>Stream Details</h3>
+                        
                         <div class="form-group">
-                            <label>Stream Key / URL</label>
-                            <input type="text" id="streamKey" placeholder="Enter your stream key or RTMP URL" class="form-input">
-                            <small>Find this in your platform's dashboard under "Stream Settings"</small>
+                            <label>Stream Key <span class="required">*</span></label>
+                            <input type="password" id="streamKey" placeholder="Enter your stream key" class="form-input">
+                            <small>Find your stream key in your platform's dashboard under "Stream Settings"</small>
+                            <div class="stream-key-help">
+                                <button class="btn btn-small btn-secondary" onclick="toggleStreamKeyVisibility()">
+                                    <i class="fas fa-eye"></i> Show
+                                </button>
+                                <button class="btn btn-small btn-secondary" onclick="copyStreamKey()">
+                                    <i class="fas fa-copy"></i> Copy
+                                </button>
+                            </div>
                         </div>
+
                         <div class="form-group">
-                            <label>Stream Server</label>
-                            <select id="streamServer" class="form-select">
-                                <option value="auto">Auto (Recommended)</option>
-                                <option value="us">North America</option>
-                                <option value="eu">Europe</option>
-                                <option value="asia">Asia</option>
-                                <option value="sa">South America</option>
-                            </select>
+                            <label>RTMP Server URL</label>
+                            <input type="text" id="rtmpServer" placeholder="rtmp://live.twitch.tv/app" class="form-input">
+                            <small>For Custom RTMP or advanced users</small>
                         </div>
+
                         <div class="form-group">
                             <label>Stream Title</label>
                             <input type="text" id="streamTitle" placeholder="Enter stream title" class="form-input">
                         </div>
+
                         <div class="form-group">
-                            <label>Stream Category/Game</label>
+                            <label>Stream Category / Game</label>
                             <input type="text" id="streamCategory" placeholder="Enter category or game" class="form-input">
                         </div>
-                    </div>
-                </div>
-
-                <!-- Hotkeys Tab -->
-                <div class="tab-content" id="tab-hotkeys">
-                    <div class="settings-group">
-                        <h3><i class="fas fa-keyboard"></i> Hotkey Configuration</h3>
-                        <p class="help-text">Click on a hotkey field and press your desired key combination to set it.</p>
-                        
-                        <div class="hotkey-list">
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Start/Stop Streaming</span>
-                                <input type="text" class="hotkey-input" id="hk-stream" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-stream')">✕</button>
-                            </div>
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Start/Stop Recording</span>
-                                <input type="text" class="hotkey-input" id="hk-record" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-record')">✕</button>
-                            </div>
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Take Screenshot</span>
-                                <input type="text" class="hotkey-input" id="hk-screenshot" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-screenshot')">✕</button>
-                            </div>
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Switch to Camera</span>
-                                <input type="text" class="hotkey-input" id="hk-camera" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-camera')">✕</button>
-                            </div>
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Switch to Screen</span>
-                                <input type="text" class="hotkey-input" id="hk-screen" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-screen')">✕</button>
-                            </div>
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Switch to Window</span>
-                                <input type="text" class="hotkey-input" id="hk-window" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-window')">✕</button>
-                            </div>
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Toggle Overlay</span>
-                                <input type="text" class="hotkey-input" id="hk-overlay" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-overlay')">✕</button>
-                            </div>
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Scene Preset 1</span>
-                                <input type="text" class="hotkey-input" id="hk-preset1" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-preset1')">✕</button>
-                            </div>
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Scene Preset 2</span>
-                                <input type="text" class="hotkey-input" id="hk-preset2" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-preset2')">✕</button>
-                            </div>
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Scene Preset 3</span>
-                                <input type="text" class="hotkey-input" id="hk-preset3" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-preset3')">✕</button>
-                            </div>
-                            <div class="hotkey-row">
-                                <span class="hotkey-action">Scene Preset 4</span>
-                                <input type="text" class="hotkey-input" id="hk-preset4" placeholder="Press keys..." readonly>
-                                <button class="hotkey-clear" onclick="clearHotkey('hk-preset4')">✕</button>
-                            </div>
-                        </div>
 
                         <div class="form-group">
-                            <button class="btn btn-success" onclick="saveHotkeys()">
-                                <i class="fas fa-save"></i> Save Hotkeys
-                            </button>
-                            <button class="btn btn-secondary" onclick="resetHotkeys()">
-                                <i class="fas fa-undo"></i> Reset to Defaults
-                            </button>
+                            <label>Stream Tags (comma separated)</label>
+                            <input type="text" id="streamTags" placeholder="gaming, entertaining, creative" class="form-input">
                         </div>
                     </div>
                 </div>
@@ -355,6 +293,12 @@
                             <input type="range" id="audioVolume" min="0" max="100" value="80" class="form-range">
                             <span id="volumeLabel">80%</span>
                         </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="micEnabled" checked>
+                                Enable Microphone
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -386,6 +330,12 @@
                                 Hardware Encoding (if available)
                             </label>
                         </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="autoReconnect" checked>
+                                Auto-Reconnect on Disconnect
+                            </label>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -405,6 +355,7 @@
         <div class="footer-links">
             <a href="#" onclick="showHelp()"><i class="fas fa-question-circle"></i> Help</a>
             <a href="#" onclick="showAbout()"><i class="fas fa-info-circle"></i> About</a>
+            <a href="#" onclick="showStreamKeyHelp()"><i class="fas fa-key"></i> Stream Key Guide</a>
         </div>
     </footer>
 
